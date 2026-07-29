@@ -59,12 +59,17 @@ describe("groupContributionSettingsSchema", () => {
 });
 
 describe("joinGroupSchema", () => {
-  it("requires a UUID invitation token", () => {
+  it("requires a 64-character hex invitation token", () => {
+    expect(
+      joinGroupSchema.safeParse({
+        invitationToken: "a".repeat(64),
+      }).success,
+    ).toBe(true);
+    expect(joinGroupSchema.safeParse({ invitationToken: "not-a-token" }).success).toBe(false);
     expect(
       joinGroupSchema.safeParse({
         invitationToken: "123e4567-e89b-12d3-a456-426614174000",
       }).success,
-    ).toBe(true);
-    expect(joinGroupSchema.safeParse({ invitationToken: "not-a-uuid" }).success).toBe(false);
+    ).toBe(false);
   });
 });

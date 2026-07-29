@@ -6,14 +6,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { signInAction, initialAuthActionState } from "@/lib/actions/auth";
+import { signInAction } from "@/lib/actions/auth";
+import { initialAuthActionState } from "@/lib/actions/action-state";
 import { AlertCircle } from "lucide-react";
 
-export function SignInForm() {
+export function SignInForm({
+  next,
+  linkError,
+}: {
+  next?: string;
+  linkError?: string;
+}) {
   const [state, formAction, pending] = useActionState(signInAction, initialAuthActionState);
 
   return (
     <form action={formAction} className="space-y-5" noValidate>
+      <input type="hidden" name="next" value={next ?? ""} />
+
+      {linkError && !state.formError ? (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{linkError}</AlertDescription>
+        </Alert>
+      ) : null}
+
       {state.formError ? (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />

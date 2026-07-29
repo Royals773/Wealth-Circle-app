@@ -58,3 +58,9 @@ Notes:
   withdrawal (`withdrawal_dual_approval_distinct` constraint), and
   `canApproveOwnRequest()` in `permissions.ts` always returns `false` as a
   standing reminder to any code that consumes it.
+- As of Phase 2, "members cannot change their own role" is enforced at
+  the database level, not just by omission from the UI: the
+  `group_memberships` update policy requires `user_id <> auth.uid()`, so
+  even a manager cannot alter their own membership row (role or status)
+  through the API. See
+  [security-boundaries.md](./security-boundaries.md#phase-2-rls-fixes-found-during-pre-deployment-review).

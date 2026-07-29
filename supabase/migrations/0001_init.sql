@@ -19,12 +19,12 @@
 --     every table below.
 
 -- ---------------------------------------------------------------------
--- Extensions
--- ---------------------------------------------------------------------
-create extension if not exists "pgcrypto";
-
--- ---------------------------------------------------------------------
 -- Helper: shared updated_at trigger
+-- (No extensions are required here: gen_random_uuid() has been a
+-- PostgreSQL core function, resolvable via the always-searched
+-- pg_catalog schema, since PG13 — no pgcrypto dependency. pgcrypto is
+-- installed by 0002_phase2_auth_functions.sql, where it's first needed
+-- for invitation token hashing.)
 -- ---------------------------------------------------------------------
 create or replace function public.set_updated_at()
 returns trigger
@@ -159,6 +159,11 @@ $$;
 
 -- ---------------------------------------------------------------------
 -- group_invitations
+-- The raw invitation token is never stored — only a SHA-256 hash of it,
+-- so a database read (or leak) can never itself be used to accept an
+-- invitation. The raw token is generated and returned exactly once, by
+-- public.create_invitation() in 0002_phase2_auth_functions.sql, at
+-- creation time.
 -- ---------------------------------------------------------------------
 create table public.group_invitations (
   id uuid primary key default gen_random_uuid(),
@@ -167,7 +172,7 @@ create table public.group_invitations (
   role text not null check (
     role in ('owner', 'administrator', 'treasurer', 'loan_officer', 'auditor', 'member')
   ),
-  token uuid not null default gen_random_uuid() unique,
+  token_hash text not null unique,
   status text not null default 'pending' check (
     status in ('pending', 'accepted', 'revoked', 'expired')
   ),
@@ -634,14 +639,32 @@ create policy "group_memberships_select_groupmates" on public.group_memberships
     user_id = auth.uid() or public.is_group_member(group_id)
   );
 
-create policy "group_memberships_insert_managers_or_self" on public.group_memberships
-  for insert with check (
-    public.is_group_manager(group_id) or user_id = auth.uid()
-  );
+-- Deliberately does NOT allow `user_id = auth.uid()` self-insert: that
+-- would let any authenticated user add themselves to any group with any
+-- role, including 'owner'. The only path for a user to join a group
+-- themselves is public.accept_invitation() in
+-- 0002_phase2_auth_functions.sql, a SECURITY DEFINER function that
+-- validates a specific invitation (role, email match, single-use) before
+-- inserting on the user's behalf. The one exception — the creator of a
+-- brand-new group — is handled by the groups_after_insert_create_owner_membership
+-- trigger below, which also runs as SECURITY DEFINER.
+create policy "group_memberships_insert_managers" on public.group_memberships
+  for insert with check (public.is_group_manager(group_id));
 
+-- Managers can update OTHER members' rows (e.g. changing role or status),
+-- but never their own — this is what prevents an administrator (or owner)
+-- from promoting or demoting themselves. Promoting someone else TO
+-- 'owner' additionally requires the actor to already be an owner, so an
+-- administrator cannot unilaterally create co-owners.
 create policy "group_memberships_update_managers" on public.group_memberships
-  for update using (public.is_group_manager(group_id))
-  with check (public.is_group_manager(group_id));
+  for update using (
+    public.is_group_manager(group_id) and user_id <> auth.uid()
+  )
+  with check (
+    public.is_group_manager(group_id)
+    and user_id <> auth.uid()
+    and (role <> 'owner' or public.has_group_role(group_id, array['owner']))
+  );
 
 -- group_invitations: visible to group managers and to the invited user's
 -- own accepted rows; only managers create/update invitations.
@@ -826,8 +849,13 @@ create policy "audit_logs_select_managers_and_auditors" on public.audit_logs
     and public.has_group_role(group_id, array['owner', 'administrator', 'auditor'])
   );
 
+-- actor_id must be null or the caller themselves — prevents a member from
+-- forging an audit entry attributed to someone else.
 create policy "audit_logs_insert_members" on public.audit_logs
-  for insert with check (group_id is null or public.is_group_member(group_id));
+  for insert with check (
+    (group_id is null or public.is_group_member(group_id))
+    and (actor_id is null or actor_id = auth.uid())
+  );
 
 -- ---------------------------------------------------------------------
 -- Indexes to support tenant-scoped lookups
@@ -836,7 +864,7 @@ create index groups_created_by_idx on public.groups (created_by);
 create index group_memberships_group_id_idx on public.group_memberships (group_id);
 create index group_memberships_user_id_idx on public.group_memberships (user_id);
 create index group_invitations_group_id_idx on public.group_invitations (group_id);
-create index group_invitations_token_idx on public.group_invitations (token);
+create index group_invitations_token_hash_idx on public.group_invitations (token_hash);
 create index contribution_plans_group_id_idx on public.contribution_plans (group_id);
 create index contribution_records_group_id_idx on public.contribution_records (group_id);
 create index contribution_records_member_id_idx on public.contribution_records (member_id);

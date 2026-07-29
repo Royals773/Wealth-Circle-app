@@ -93,8 +93,12 @@ export const createGroupSchema = groupDetailsSchema
 
 export type CreateGroupInput = z.infer<typeof createGroupSchema>;
 
+// Raw invitation tokens are 32 random bytes, hex-encoded by
+// public.create_invitation() — 64 lowercase hex characters.
 export const joinGroupSchema = z.object({
-  invitationToken: z.string().uuid("This invitation link is invalid"),
+  invitationToken: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/, "This invitation link is invalid"),
 });
 
 export type JoinGroupInput = z.infer<typeof joinGroupSchema>;

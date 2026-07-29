@@ -31,7 +31,9 @@ import {
   type GroupInvitesInput,
 } from "@/lib/validations/group";
 import { ROLE_LABELS } from "@/lib/permissions";
-import { createGroupAction, initialOnboardingActionState } from "@/lib/actions/onboarding";
+import { createGroupAction } from "@/lib/actions/onboarding";
+import { initialOnboardingActionState } from "@/lib/actions/action-state";
+import { GroupCreatedSummary } from "@/components/onboarding/group-created-summary";
 
 const STEP_LABELS = ["Group details", "Contributions", "Rules", "Invite members", "Review"];
 
@@ -139,6 +141,16 @@ export function CreateGroupWizard() {
   }
 
   const validInvites = invites.filter((invite) => invite.email.trim().length > 0);
+
+  if (state.status === "success" && state.groupId) {
+    return (
+      <GroupCreatedSummary
+        groupId={state.groupId}
+        groupName={name}
+        inviteLinks={state.inviteLinks ?? []}
+      />
+    );
+  }
 
   return (
     <div className="space-y-8">

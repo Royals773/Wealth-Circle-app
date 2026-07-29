@@ -1,11 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { isSupabaseConfigured } from "@/lib/env";
+import { getAppUrl, isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { getSafeRedirect } from "@/lib/safe-redirect";
 import {
-  acceptInvitationSchema,
   forgotPasswordSchema,
+  registerForInvitationSchema,
   resetPasswordSchema,
   signInSchema,
   signUpSchema,
@@ -17,10 +18,8 @@ export interface AuthActionState {
   fieldErrors?: Record<string, string>;
 }
 
-export const initialAuthActionState: AuthActionState = { status: "idle" };
-
 const NOT_CONFIGURED_MESSAGE =
-  "Sign-in isn't available in this preview yet — Supabase credentials haven't been " +
+  "This isn't available in this preview yet — Supabase credentials haven't been " +
   "configured. See .env.example for the variables an operator needs to add.";
 
 function fieldErrorsFromZod(error: { issues: { path: PropertyKey[]; message: string }[] }) {
@@ -56,11 +55,26 @@ export async function signUpAction(
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: { data: { full_name: parsed.data.fullName } },
+    options: {
+      data: { full_name: parsed.data.fullName },
+      emailRedirectTo: `${getAppUrl()}/auth/callback?next=${encodeURIComponent("/onboarding")}`,
+    },
   });
 
-  if (error) {
-    return { status: "error", formError: error.message };
+  // Deliberately does not distinguish "email already registered" from any
+  // other outcome — both look identical to the caller, so this form can't
+  // be used to enumerate which email addresses already have accounts.
+  if (error && error.code !== "user_already_exists" && error.code !== "email_exists") {
+    if (error.code === "weak_password") {
+      return {
+        status: "error",
+        fieldErrors: { password: "Choose a stronger password." },
+      };
+    }
+    return {
+      status: "error",
+      formError: "We couldn't create your account. Please try again in a moment.",
+    };
   }
 
   redirect("/verify-email");
@@ -90,7 +104,11 @@ export async function signInAction(
     return { status: "error", formError: "Incorrect email or password." };
   }
 
-  redirect("/dashboard");
+  // /dashboard itself resolves to the member's first group, or to
+  // onboarding if they don't belong to one yet — see
+  // src/app/(dashboard)/dashboard/page.tsx.
+  const next = getSafeRedirect(String(formData.get("next") ?? ""), "/dashboard");
+  redirect(next);
 }
 
 export async function forgotPasswordAction(
@@ -108,7 +126,9 @@ export async function forgotPasswordAction(
   }
 
   const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(parsed.data.email);
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${getAppUrl()}/auth/callback?next=${encodeURIComponent("/reset-password")}`,
+  });
 
   // Always report success, whether or not the address is registered, so
   // the form can't be used to enumerate accounts.
@@ -133,10 +153,34 @@ export async function resetPasswordAction(
   }
 
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      status: "error",
+      formError: "This link is invalid or has expired. Request a new password reset email.",
+    };
+  }
+
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    if (error.code === "weak_password") {
+      return { status: "error", fieldErrors: { password: "Choose a stronger password." } };
+    }
+    if (error.code === "same_password") {
+      return {
+        status: "error",
+        formError: "That's your current password — choose a different one.",
+      };
+    }
+    return {
+      status: "error",
+      formError: "We couldn't reset your password. Please try again.",
+    };
   }
 
   redirect("/sign-in");
@@ -147,17 +191,30 @@ export async function signOutAction(): Promise<void> {
     const supabase = await createClient();
     await supabase.auth.signOut();
   }
-  redirect("/sign-in");
+  redirect("/");
 }
 
-export async function acceptInvitationAction(
+/**
+ * Registers a brand-new account for someone who followed an invitation
+ * link but doesn't have one yet. This only creates the Supabase Auth
+ * user — it does NOT join the group. Supabase requires the email to be
+ * verified before a session exists, so group membership is granted
+ * afterwards, once the user returns (now authenticated) to the same
+ * invitation page and confirms via confirmAcceptInvitationAction — see
+ * src/lib/actions/invitations.ts.
+ */
+export async function registerForInvitationAction(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  const parsed = acceptInvitationSchema.safeParse({
-    token: formData.get("token"),
+  const token = String(formData.get("token") ?? "");
+
+  const parsed = registerForInvitationSchema.safeParse({
+    email: formData.get("email"),
     fullName: formData.get("fullName"),
     password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+    acceptTerms: formData.get("acceptTerms") === "on",
   });
 
   if (!parsed.success) {
@@ -168,12 +225,25 @@ export async function acceptInvitationAction(
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
   }
 
-  // Phase 2 will look up the group_invitations row by token, create the
-  // account, and insert the corresponding group_memberships row inside a
-  // single transaction (via an RPC function) so a partial signup can never
-  // leave an accepted invitation without a membership.
-  return {
-    status: "error",
-    formError: "Accepting invitations will be enabled once group onboarding ships.",
-  };
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signUp({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    options: {
+      data: { full_name: parsed.data.fullName },
+      emailRedirectTo: `${getAppUrl()}/auth/callback?next=${encodeURIComponent(`/invitations/${token}`)}`,
+    },
+  });
+
+  if (error && error.code !== "user_already_exists" && error.code !== "email_exists") {
+    if (error.code === "weak_password") {
+      return { status: "error", fieldErrors: { password: "Choose a stronger password." } };
+    }
+    return {
+      status: "error",
+      formError: "We couldn't create your account. Please try again in a moment.",
+    };
+  }
+
+  return { status: "success" };
 }

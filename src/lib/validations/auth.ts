@@ -49,10 +49,19 @@ export const resetPasswordSchema = z
 
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
-export const acceptInvitationSchema = z.object({
-  token: z.string().uuid("This invitation link is invalid"),
-  fullName: z.string().min(2, "Enter your full name").max(120),
-  password,
-});
+export const registerForInvitationSchema = z
+  .object({
+    email: z.string().email("Enter a valid email address"),
+    fullName: z.string().min(2, "Enter your full name").max(120),
+    password,
+    confirmPassword: z.string(),
+    acceptTerms: z.literal(true, {
+      error: "You must accept the terms to create an account",
+    }),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
-export type AcceptInvitationInput = z.infer<typeof acceptInvitationSchema>;
+export type RegisterForInvitationInput = z.infer<typeof registerForInvitationSchema>;

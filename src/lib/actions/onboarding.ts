@@ -1,17 +1,25 @@
 "use server";
 
-import { isSupabaseConfigured } from "@/lib/env";
+import { getAppUrl, isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { createGroupSchema, joinGroupSchema } from "@/lib/validations/group";
 import { redirect } from "next/navigation";
+import type { GroupRole } from "@/lib/types/database";
+
+export interface CreatedInviteLink {
+  email: string;
+  role: GroupRole;
+  link: string;
+}
 
 export interface OnboardingActionState {
   status: "idle" | "error" | "success";
   formError?: string;
   fieldErrors?: Record<string, string>;
+  /** Only set on successful group creation — see createGroupAction. */
+  groupId?: string;
+  inviteLinks?: CreatedInviteLink[];
 }
-
-export const initialOnboardingActionState: OnboardingActionState = { status: "idle" };
 
 const NOT_CONFIGURED_MESSAGE =
   "Group creation isn't available in this preview yet — Supabase credentials haven't been " +
@@ -66,72 +74,68 @@ export async function createGroupAction(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/sign-in?next=/onboarding/new");
   }
 
   const { majorToMinorUnits } = await import("@/lib/money");
-  const { data: group, error } = await supabase
-    .from("groups")
-    .insert({
-      name: parsed.data.name,
-      slug: parsed.data.slug,
-      description: parsed.data.description ?? null,
-      country_code: parsed.data.countryCode,
-      currency_code: parsed.data.currencyCode,
-      contribution_frequency: parsed.data.contributionFrequency,
-      contribution_type: parsed.data.contributionType,
-      financial_year_start_month: parsed.data.financialYearStartMonth,
-      rules: parsed.data.rules ?? null,
-      created_by: user.id,
-    })
-    .select("id, slug")
-    .single();
+
+  // A single atomic database call: the group, its owner membership, an
+  // optional initial contribution plan, optional initial invitations, and
+  // an audit log entry are all created in one transaction — see
+  // public.create_group_with_setup() in
+  // supabase/migrations/0002_phase2_auth_functions.sql. There is no
+  // separate client-side insert that could leave a partially-created or
+  // ownerless group.
+  const { data, error } = await supabase.rpc("create_group_with_setup", {
+    p_name: parsed.data.name,
+    p_slug: parsed.data.slug,
+    p_description: parsed.data.description ?? null,
+    p_country_code: parsed.data.countryCode,
+    p_currency_code: parsed.data.currencyCode,
+    p_contribution_frequency: parsed.data.contributionFrequency,
+    p_contribution_type: parsed.data.contributionType,
+    p_fixed_amount_minor_units:
+      parsed.data.contributionType === "fixed" && parsed.data.fixedAmountMajorUnits
+        ? majorToMinorUnits(parsed.data.fixedAmountMajorUnits, parsed.data.currencyCode)
+        : null,
+    p_financial_year_start_month: parsed.data.financialYearStartMonth,
+    p_rules: parsed.data.rules ?? null,
+    p_invites: parsed.data.invites,
+  });
+
+  const group = data?.[0];
 
   if (error || !group) {
-    return { status: "error", formError: error?.message ?? "Could not create the group." };
+    return {
+      status: "error",
+      formError: error?.message ?? "Could not create the group. Please try again.",
+    };
   }
 
-  if (parsed.data.contributionType === "fixed" && parsed.data.fixedAmountMajorUnits) {
-    await supabase.from("contribution_plans").insert({
-      group_id: group.id,
-      name: "Standard contribution",
-      amount_minor_units: majorToMinorUnits(
-        parsed.data.fixedAmountMajorUnits,
-        parsed.data.currencyCode,
-      ),
-      currency_code: parsed.data.currencyCode,
-      frequency: parsed.data.contributionFrequency,
-      is_flexible: false,
-      start_date: new Date().toISOString().slice(0, 10),
-      created_by: user.id,
-    });
-  }
+  // Invitation links can only ever be shown once — the database stores
+  // only a hash of each token (see docs/security-boundaries.md) — so
+  // rather than redirecting immediately, hand them back to the wizard to
+  // display before the user moves on to the dashboard.
+  const inviteLinks: CreatedInviteLink[] = (group.invite_links ?? []).map((invite) => ({
+    email: invite.email,
+    role: invite.role,
+    link: `${getAppUrl()}/invitations/${invite.rawToken}`,
+  }));
 
-  if (parsed.data.invites.length > 0) {
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from("group_invitations").insert(
-      parsed.data.invites.map((invite) => ({
-        group_id: group.id,
-        email: invite.email,
-        role: invite.role,
-        invited_by: user.id,
-        expires_at: expiresAt,
-      })),
-    );
-  }
-
-  redirect(`/dashboard/${group.id}`);
+  return { status: "success", groupId: group.group_id, inviteLinks };
 }
 
-const UUID_PATTERN =
-  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+// Raw invitation tokens are 64 lowercase hex characters — extract one
+// from a pasted link (e.g. https://.../invitations/<token>) or accept it
+// as-is if the user pasted just the token.
+const INVITATION_TOKEN_PATTERN = /[0-9a-f]{64}/i;
 
 export async function joinGroupAction(
   _prevState: OnboardingActionState,
   formData: FormData,
 ): Promise<OnboardingActionState> {
   const raw = String(formData.get("invitationToken") ?? "");
-  const extractedToken = raw.match(UUID_PATTERN)?.[0] ?? raw;
+  const extractedToken = (raw.match(INVITATION_TOKEN_PATTERN)?.[0] ?? raw).toLowerCase();
 
   const parsed = joinGroupSchema.safeParse({ invitationToken: extractedToken });
 

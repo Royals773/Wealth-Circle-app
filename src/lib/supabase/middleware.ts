@@ -18,8 +18,9 @@ export async function updateSession(request: NextRequest) {
 
   const supabase = createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL as string,
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string,
     {
+      auth: { flowType: "pkce" },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -36,6 +37,9 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
+  // getUser() re-validates the JWT against Supabase's auth server rather
+  // than trusting the cookie payload alone — the trusted check the rest of
+  // the app (Server Components, Server Actions) also relies on.
   const {
     data: { user },
   } = await supabase.auth.getUser();

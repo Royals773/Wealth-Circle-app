@@ -1,6 +1,15 @@
 # Data Model
 
-Source of truth: [`supabase/migrations/0001_init.sql`](../supabase/migrations/0001_init.sql).
+Source of truth, applied in order:
+[`0001_init.sql`](../supabase/migrations/0001_init.sql) (schema + RLS),
+[`0002_phase2_auth_functions.sql`](../supabase/migrations/0002_phase2_auth_functions.sql)
+(group creation and invitation functions),
+[`0003_fix_group_creation_visibility.sql`](../supabase/migrations/0003_fix_group_creation_visibility.sql)
+and
+[`0004_fix_accept_invitation_ambiguous_column.sql`](../supabase/migrations/0004_fix_accept_invitation_ambiguous_column.sql)
+(two bugs found and fixed during live Phase 2 testing against a real
+Supabase project — see
+[security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)).
 TypeScript mirror: [`src/lib/types/database.ts`](../src/lib/types/database.ts).
 
 ## Conventions
@@ -28,7 +37,7 @@ TypeScript mirror: [`src/lib/types/database.ts`](../src/lib/types/database.ts).
 | `profiles` | One row per Supabase Auth user. Display data only — never online-banking credentials. |
 | `groups` | A private workspace: name, slug, country, currency, contribution settings, financial year, rules. |
 | `group_memberships` | A user's role in one group (`owner`, `administrator`, `treasurer`, `loan_officer`, `auditor`, `member`) and status. Unique per `(group_id, user_id)`. |
-| `group_invitations` | Pending/accepted/revoked/expired invitations, addressed by email, carrying a role and an expiring token. |
+| `group_invitations` | Pending/accepted/revoked/expired invitations, addressed by email, carrying a role and an expiring token. Only a SHA-256 hash of the token is stored (`token_hash`) — the raw token is generated and returned exactly once, by `create_invitation()`, and is never persisted. |
 | `contribution_plans` | A group's contribution scheme — fixed amount or flexible, frequency, effective dates. |
 | `contribution_records` | Individual member contributions, with the full status lifecycle and optional link back to a `contribution_plan`. |
 | `withdrawal_requests` | Requests to withdraw from the group's own bank account; supports two-approver sign-off (`approved_by_1/2`). |
@@ -67,6 +76,21 @@ giving the browser client elevated privileges:
   exists because the `group_memberships` insert policy otherwise requires
   an *existing* manager membership, which cannot exist yet for a brand-new
   group.
+
+## Phase 2 database functions
+
+Added in `0002_phase2_auth_functions.sql`. All are called via
+`supabase.rpc(...)` rather than raw table `.insert()`/`.update()` calls —
+see [security-boundaries.md](./security-boundaries.md) for the security
+reasoning behind each.
+
+| Function | Security | Purpose |
+|---|---|---|
+| `create_group_with_setup` | invoker | Atomically creates a group, its owner membership, an optional initial contribution plan, optional initial invitations, and an audit log entry. |
+| `create_invitation` | invoker | Manager-only. Generates a 256-bit random token, stores only its hash, returns the raw token once. |
+| `revoke_invitation` | invoker | Manager-only, and only while the invitation is still `pending`. |
+| `get_invitation_preview` | **definer** | Public, token-gated read (group name, role, invited email, status) so an unauthenticated visitor can see what they're being invited to before creating an account. |
+| `accept_invitation` | **definer** | The only way a user can add themselves to a group. Validates the token, status, expiry, and that the caller's verified email matches the invitation, then inserts the membership with the role taken from the invitation itself. |
 
 ## Regenerating TypeScript types from a live project
 

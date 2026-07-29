@@ -4,9 +4,15 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { InviteMemberDialog } from "@/components/dashboard/invite-member-dialog";
+import {
+  PendingInvitationsList,
+  type PendingInvitation,
+} from "@/components/dashboard/pending-invitations-list";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
-import { ROLE_LABELS } from "@/lib/permissions";
+import { getCurrentMembershipRole } from "@/lib/data/current-membership";
+import { ROLE_LABELS, roleHasCapability } from "@/lib/permissions";
 import type { GroupRole, MembershipStatus } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "Members" };
@@ -52,15 +58,40 @@ async function loadMembers(groupId: string): Promise<MemberRow[]> {
   }));
 }
 
+async function loadPendingInvitations(groupId: string): Promise<PendingInvitation[]> {
+  if (!isSupabaseConfigured) return [];
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("group_invitations")
+    .select("id, email, role, expires_at")
+    .eq("group_id", groupId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    expiresAt: row.expires_at,
+  }));
+}
+
 export default async function MembersPage({ params }: { params: Promise<{ groupId: string }> }) {
   const { groupId } = await params;
-  const members = await loadMembers(groupId);
+  const [members, currentRole] = await Promise.all([
+    loadMembers(groupId),
+    getCurrentMembershipRole(groupId),
+  ]);
+  const canManageMembers = currentRole !== null && roleHasCapability(currentRole, "manage_members");
+  const pendingInvitations = canManageMembers ? await loadPendingInvitations(groupId) : [];
 
   return (
     <div>
       <PageHeader
         title="Members"
         description="Everyone who belongs to this group, and the role they hold here."
+        action={canManageMembers ? <InviteMemberDialog groupId={groupId} /> : undefined}
       />
 
       {members.length === 0 ? (
@@ -86,7 +117,9 @@ export default async function MembersPage({ params }: { params: Promise<{ groupI
                 <TableRow key={member.id}>
                   <TableCell className="font-medium text-foreground">{member.fullName}</TableCell>
                   <TableCell className="text-muted-foreground">{member.email}</TableCell>
-                  <TableCell>{ROLE_LABELS[member.role]}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{ROLE_LABELS[member.role]}</Badge>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={member.status === "active" ? "secondary" : "outline"}>
                       {member.status}
@@ -101,6 +134,10 @@ export default async function MembersPage({ params }: { params: Promise<{ groupI
           </Table>
         </div>
       )}
+
+      {canManageMembers ? (
+        <PendingInvitationsList groupId={groupId} invitations={pendingInvitations} />
+      ) : null}
     </div>
   );
 }

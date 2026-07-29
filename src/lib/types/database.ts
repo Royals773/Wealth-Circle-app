@@ -84,10 +84,55 @@ interface Table<Row, Insert, Update> {
   Relationships: [];
 }
 
+interface Fn<Args, Returns> {
+  Args: Args;
+  Returns: Returns;
+}
+
 export interface Database {
   public: {
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_group_with_setup: Fn<
+        {
+          p_name: string;
+          p_slug: string;
+          p_description: string | null;
+          p_country_code: string;
+          p_currency_code: string;
+          p_contribution_frequency: ContributionFrequency;
+          p_contribution_type: ContributionType;
+          p_fixed_amount_minor_units: number | null;
+          p_financial_year_start_month: number;
+          p_rules: string | null;
+          p_invites: { email: string; role: GroupRole }[];
+        },
+        {
+          group_id: string;
+          slug: string;
+          invite_links: { email: string; role: GroupRole; rawToken: string }[];
+        }[]
+      >;
+      create_invitation: Fn<
+        { p_group_id: string; p_email: string; p_role: GroupRole },
+        { invitation_id: string; raw_token: string }[]
+      >;
+      revoke_invitation: Fn<{ p_invitation_id: string }, undefined>;
+      get_invitation_preview: Fn<
+        { p_token: string },
+        {
+          group_name: string;
+          role: GroupRole;
+          email: string;
+          status: InvitationStatus;
+          expires_at: string;
+        }[]
+      >;
+      accept_invitation: Fn<
+        { p_token: string },
+        { group_id: string; role: GroupRole }[]
+      >;
+    };
     Tables: {
       profiles: Table<
         {
@@ -173,7 +218,7 @@ export interface Database {
           group_id: string;
           email: string;
           role: GroupRole;
-          token: string;
+          token_hash: string;
           status: InvitationStatus;
           invited_by: string;
           expires_at: string;
@@ -185,6 +230,7 @@ export interface Database {
           group_id: string;
           email: string;
           role: GroupRole;
+          token_hash: string;
           invited_by: string;
           expires_at: string;
           status?: InvitationStatus;

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { forgotPasswordAction, initialAuthActionState } from "@/lib/actions/auth";
+import { forgotPasswordAction } from "@/lib/actions/auth";
+import { initialAuthActionState } from "@/lib/actions/action-state";
 import { AlertCircle, MailCheck } from "lucide-react";
 
 export function ForgotPasswordForm() {

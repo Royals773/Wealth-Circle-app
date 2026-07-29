@@ -1,6 +1,6 @@
 # MVP Roadmap
 
-## Phase 1 — Product and technical foundation *(this delivery)*
+## Phase 1 — Product and technical foundation *(complete)*
 
 - Next.js + TypeScript strict + Tailwind + shadcn/ui project foundation
 - Public marketing website (hero, product explanation, features, how it
@@ -22,15 +22,31 @@
 - Automated tests for validation schemas, money helpers and the
   permissions model; production build, lint and tests all passing
 
-## Phase 2 — Supabase authentication and group onboarding
+## Phase 2 — Supabase authentication and group onboarding *(complete)*
 
-- Connect a real Supabase project; run the Phase 1 migration against it
-- Wire sign-up/sign-in/password-reset/email-verification end-to-end
-  against live Supabase Auth
-- Implement invitation delivery (email) and full accept-invitation flow,
-  including the transactional "create account + join group" path
-- Persist and load real group data through the onboarding wizard
-- Regenerate `src/lib/types/database.ts` from the live schema
+- Connected a dedicated Supabase project; applied the Phase 1 migration,
+  fixing three RLS bugs found during pre-deployment review (arbitrary
+  self-join, self-promotion, audit log forgery — see
+  [security-boundaries.md](./security-boundaries.md))
+- Wired sign-up/sign-in/sign-out/password-reset/email-verification
+  end-to-end against live Supabase Auth, using the PKCE flow and trusted
+  (`getUser()`) session checks throughout
+- Implemented the full invitation lifecycle: create (owner/admin only,
+  hashed 256-bit token), view pending, revoke, copy-link-once, and a
+  three-way acceptance flow (register / wrong-account / confirm-and-join)
+  via the `accept_invitation()` database function
+- Made group creation atomic via `create_group_with_setup()` — no
+  sequential client-side inserts, no possibility of an ownerless or
+  partially-created group
+- Multi-group membership and switching, backed by real membership rows
+- Audit logging for group/invitation lifecycle events
+
+Deferred to a later phase, not part of Phase 2's explicit scope:
+transactional email delivery of invitations (copy-link is implemented;
+sending the email itself needs a provider decision), and a dedicated
+member role-management UI (the RLS enforcement — including
+self-promotion prevention — exists and is tested, but there's no "change
+someone's role" screen yet).
 
 ## Phase 3 — Contributions and bank-statement reconciliation
 

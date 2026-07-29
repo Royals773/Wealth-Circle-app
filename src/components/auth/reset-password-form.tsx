@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { resetPasswordAction, initialAuthActionState } from "@/lib/actions/auth";
+import { resetPasswordAction } from "@/lib/actions/auth";
+import { initialAuthActionState } from "@/lib/actions/action-state";
 import { AlertCircle } from "lucide-react";
 
 export function ResetPasswordForm() {

@@ -7,14 +7,15 @@ import type { Database } from "@/lib/types/database";
  * Server-side Supabase client for use in Server Components, Server Actions
  * and Route Handlers. Reads and writes the session via cookies so RLS
  * policies apply using the signed-in user's identity — this client never
- * uses the service-role key.
+ * uses an elevated key. Uses the PKCE auth flow, matching the browser
+ * client and the /auth/callback code-exchange route.
  */
 export async function createClient() {
   if (!isSupabaseConfigured) {
     throw new Error(
       "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and " +
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment before calling " +
-        "createClient().",
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in your environment before " +
+        "calling createClient().",
     );
   }
 
@@ -22,8 +23,9 @@ export async function createClient() {
 
   return createServerClient<Database>(
     env.NEXT_PUBLIC_SUPABASE_URL as string,
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string,
     {
+      auth: { flowType: "pkce" },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -35,7 +37,7 @@ export async function createClient() {
             }
           } catch {
             // Called from a Server Component that cannot set cookies.
-            // Session refresh is instead handled by src/middleware.ts.
+            // Session refresh is instead handled by src/proxy.ts.
           }
         },
       },

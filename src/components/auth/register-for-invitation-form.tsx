@@ -1,27 +1,72 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { signUpAction } from "@/lib/actions/auth";
+import { registerForInvitationAction } from "@/lib/actions/auth";
 import { initialAuthActionState } from "@/lib/actions/action-state";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, MailCheck } from "lucide-react";
 
-export function SignUpForm() {
-  const [state, formAction, pending] = useActionState(signUpAction, initialAuthActionState);
+export function RegisterForInvitationForm({
+  token,
+  groupName,
+  role,
+  email,
+}: {
+  token: string;
+  groupName: string;
+  role: string;
+  email: string;
+}) {
+  const [state, formAction, pending] = useActionState(
+    registerForInvitationAction,
+    initialAuthActionState,
+  );
+
+  const invitationSummary = (
+    <div className="rounded-lg border border-border bg-secondary/40 p-4 text-sm">
+      <p className="text-muted-foreground">You&apos;ve been invited to join</p>
+      <p className="mt-1 text-base font-semibold text-foreground">{groupName}</p>
+      <p className="mt-1 text-muted-foreground">as {role}</p>
+    </div>
+  );
+
+  if (state.status === "success") {
+    return (
+      <div className="space-y-5">
+        {invitationSummary}
+        <Alert>
+          <MailCheck className="h-4 w-4" />
+          <AlertDescription>
+            Check your email at {email} for a verification link. Once verified, you&apos;ll be
+            brought back here to join {groupName}.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <form action={formAction} className="space-y-5" noValidate>
+      <input type="hidden" name="token" value={token} />
+      <input type="hidden" name="email" value={email} />
+
+      {invitationSummary}
+
       {state.formError ? (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{state.formError}</AlertDescription>
         </Alert>
       ) : null}
+
+      <div className="space-y-2">
+        <Label htmlFor="email-display">Email address</Label>
+        <Input id="email-display" value={email} disabled />
+      </div>
 
       <div className="space-y-2">
         <Label htmlFor="fullName">Full name</Label>
@@ -41,25 +86,7 @@ export function SignUpForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email address</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          aria-invalid={Boolean(state.fieldErrors?.email)}
-          aria-describedby={state.fieldErrors?.email ? "email-error" : undefined}
-        />
-        {state.fieldErrors?.email ? (
-          <p id="email-error" className="text-sm text-destructive">
-            {state.fieldErrors.email}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">Create a password</Label>
         <Input
           id="password"
           name="password"
@@ -89,7 +116,9 @@ export function SignUpForm() {
           autoComplete="new-password"
           required
           aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
-          aria-describedby={state.fieldErrors?.confirmPassword ? "confirmPassword-error" : undefined}
+          aria-describedby={
+            state.fieldErrors?.confirmPassword ? "confirmPassword-error" : undefined
+          }
         />
         {state.fieldErrors?.confirmPassword ? (
           <p id="confirmPassword-error" className="text-sm text-destructive">
@@ -110,15 +139,8 @@ export function SignUpForm() {
       ) : null}
 
       <Button type="submit" className="w-full" disabled={pending}>
-        {pending ? "Creating account…" : "Create account"}
+        {pending ? "Creating account…" : "Create account and continue"}
       </Button>
-
-      <p className="text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <Link href="/sign-in" className="font-medium text-foreground hover:underline">
-          Sign in
-        </Link>
-      </p>
     </form>
   );
 }
