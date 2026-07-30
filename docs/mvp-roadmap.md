@@ -58,14 +58,48 @@ role-management UI (the RLS enforcement — including self-promotion
 prevention — exists and is tested, but there's no "change someone's
 role" screen yet).
 
-## Phase 3 — Contributions and bank-statement reconciliation
+## Phase 3 — Contributions and bank-statement reconciliation *(complete)*
 
-- Contribution recording UI for treasurers (single entry + bulk import)
-- Member-facing "my contributions" view
-- Verification workflow (submitted → verified)
-- Bank-statement reconciliation workflow (verified → reconciled), always
-  capturing who reconciled a record and when
-- Overdue detection for missed contributions against a plan's schedule
+- Contribution plan configuration (fixed or flexible, amount, optional
+  required minimum for flexible plans, frequency) — extends the existing
+  Settings page, currency is always inherited from the group and can
+  never be mixed within it
+- Contribution recording for treasurers/administrators/owners: member,
+  amount, period, date received, payment method, bank/payment reference,
+  internal note — always as a `pending_verification` ledger entry, never
+  a money movement
+- Verification and bank-statement reconciliation as two distinct steps
+  (`pending_verification → verified → reconciled`), each stamping who and
+  when
+- Rejection (for a pending entry that was never actually received) and
+  reversal/correction (for a verified or reconciled entry found to be
+  wrong) as two separate workflows, both requiring a reason; a reversal
+  never edits the original record — see
+  [security-boundaries.md](./security-boundaries.md#contribution-ledger-integrity-phase-3)
+- A database trigger, not just RLS, locks a verified/reconciled record's
+  financial fields against direct edits
+- Treasurer dashboard (expected/received/verified/pending/outstanding/
+  overdue, fully-paid/partial/unpaid member breakdown, filters, recent
+  activity) and a member-facing "My contributions" view, both computed
+  server-side from RLS-scoped rows — never trusting a client-sent total
+- Overdue detection (`src/lib/contribution-periods.ts`,
+  `src/lib/contributions.ts`) handling partial payments, members who
+  joined partway through a period, reversed contributions, flexible plans
+  with no fixed target, and month-end/leap-year date-boundary edge cases
+  — all as pure, unit-tested functions operating on plain `YYYY-MM-DD`
+  strings rather than timezone-sensitive `Date` objects
+- Tightened RLS: members can no longer create contribution records at
+  all (only view their own); see security-boundaries.md for what changed
+  from Phase 1's schema
+
+Deferred to a later phase, not part of Phase 3's explicit scope:
+**CSV export and a dedicated contribution report** — the current
+roadmap places "reports... with export" in Phase 6, and building it
+twice (once now, once properly alongside the other report types) wasn't
+worth it. Bulk-import of contributions (mentioned as an original
+possibility) was also deferred — single-entry recording covers the
+actual requirement; bulk import can be added later without changing the
+ledger model.
 
 ## Phase 4 — Loan applications and repayments
 

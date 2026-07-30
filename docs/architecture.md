@@ -118,6 +118,55 @@ full reasoning (atomicity, and why direct self-service `INSERT`s into
   group; validates the invitation and that the caller's verified email
   matches it before inserting the membership.
 
+## Contributions and reconciliation (Phase 3)
+
+The contribution ledger is `contribution_plans` (one active row per
+group, describing fixed/flexible, amount, optional minimum, frequency)
+and `contribution_records` (one row per recorded payment). The write path
+is six Postgres RPCs in
+`supabase/migrations/0006_phase3_contributions.sql` —
+`upsert_contribution_plan`, `record_contribution`, `verify_contribution`,
+`reconcile_contribution`, `reject_contribution`, `reverse_contribution` —
+called from `src/lib/actions/contributions.ts`, following the exact
+Server Action shape already used for invitations (Zod validate →
+`isSupabaseConfigured` guard → `supabase.rpc(...)` → `revalidatePath`).
+See [security-boundaries.md](./security-boundaries.md#contribution-ledger-integrity-phase-3)
+for the RLS/trigger enforcement behind each of these.
+
+A single ledger entry moves through
+`pending_verification → verified → reconciled`, or
+`pending_verification → rejected`, or, for a record already verified or
+reconciled, `→ reversed` (optionally producing a new linked replacement
+row via `reverse_contribution`'s `p_replacement`). Once a record is
+verified or reconciled, its financial fields are locked — a database
+trigger, not just RLS, refuses direct edits (see security-boundaries.md);
+the only way to correct it is that reversal workflow.
+
+**Period and overdue math is pure TypeScript, not SQL.**
+`src/lib/contribution-periods.ts` computes which period (start/end date)
+a given date falls into for a plan's frequency, using plain
+year/month/day integer arithmetic rather than `Date` objects, so there's
+no timezone ambiguity — every date in and out is a plain `YYYY-MM-DD`
+string, matching Postgres `date` columns exactly. `src/lib/contributions.ts`
+computes a member's status for a period (`paid`/`partial`/`unpaid`/
+`overdue`/`not_applicable`) from their verified total against the plan's
+required amount — a flexible plan with no minimum is never `overdue`,
+and a period that ended before a member joined is `not_applicable`. Both
+files are pure and unit-tested (`src/lib/contribution-periods.test.ts`,
+`src/lib/contributions.test.ts`); the Contributions dashboard and
+"My contributions" view are Server Components that fetch RLS-scoped rows
+and call these functions — a balance is always recomputed server-side,
+never trusted from a value the browser sent.
+
+The Contributions page (`.../contributions/page.tsx`) is one route,
+role-gated: officers with `record_contributions` capability (owner/
+administrator/treasurer) see an "Overview" tab (stat cards, filters, the
+full ledger table with Verify/Reconcile/Reject/Reverse actions, and
+"Record contribution") plus a "My contributions" tab for their own
+records; everyone else sees only "My contributions" — there's no
+separate route or nav item, since a plain member has nothing else to see
+there anyway.
+
 ## Supabase-ready architecture (still works with zero credentials)
 
 Even though a real Supabase project is now connected for Phase 2, every
@@ -191,19 +240,25 @@ boundary and this module is not.
 Two layers:
 
 - **Unit tests** (`npm run test`, Vitest): Zod validation schemas, the
-  money conversion helpers, the permissions capability map, and the
-  open-redirect guard in `src/lib/safe-redirect.ts`. These run with no
-  Supabase project and are part of the standard build gate.
+  money conversion helpers, the permissions capability map, the
+  open-redirect guard in `src/lib/safe-redirect.ts`, and (Phase 3) the
+  contribution period/overdue-status math in
+  `src/lib/contribution-periods.test.ts` and `src/lib/contributions.test.ts`.
+  These run with no Supabase project and are part of the standard build
+  gate.
 - **Live security tests** (`npm run test:security`, gated behind real
   Supabase credentials — see `tests/security/README.md`): exercise Row
-  Level Security and the invitation lifecycle against an actual project
-  using two real test users and two real test groups — tenant isolation,
+  Level Security and the invitation lifecycle
+  (`tenant-isolation.test.ts`) and the contribution ledger's RLS/RPCs/
+  immutability trigger (`contributions.test.ts`) against an actual
+  project using real test users and groups — tenant isolation,
   self-promotion prevention, revoked/expired/already-used invitations,
-  and atomic group creation. Skipped automatically (not failed) when
-  Supabase env vars aren't present, so the standard build/test gate never
-  depends on a live project. All 13 currently pass against a live
-  project; running this suite is what caught the two bugs fixed in
-  `0003`/`0004` (see
+  atomic group creation, members unable to create or alter ledger
+  entries, and the verify/reconcile/reverse workflow. Skipped
+  automatically (not failed) when Supabase env vars aren't present, so
+  the standard build/test gate never depends on a live project. All 25
+  currently pass against a live project; running this suite is what
+  caught the two bugs fixed in `0003`/`0004` (see
   [security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)).
 
 UI composition is verified by building the app and visually checking key

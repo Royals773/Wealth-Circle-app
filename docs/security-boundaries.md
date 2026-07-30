@@ -78,7 +78,9 @@ as a new row referencing the original via `reversal_of`, with a mandatory
 `reversal_reason` (enforced by check constraints on
 `contribution_records`, `repayments`, and `withdrawal_requests`) — the
 original entry, and the fact that it was corrected, both remain in the
-permanent record.
+permanent record. On `contribution_records` specifically (Phase 3), this
+is backed by more than a check constraint — see "Contribution ledger
+integrity" below.
 
 ## Credential handling
 
@@ -179,6 +181,58 @@ the whole call rolls back and nothing is created; there is no
 intermediate state where a group exists without an owner. The Next.js
 Server Action that calls it (`createGroupAction`) makes exactly one
 `supabase.rpc()` call — no sequential client-side `.insert()`s.
+
+## Contribution ledger integrity (Phase 3)
+
+`supabase/migrations/0006_phase3_contributions.sql` adds the write path
+for the contribution ledger, following the same `SECURITY INVOKER` +
+explicit role check + audit log pattern as the Phase 2 functions above:
+`upsert_contribution_plan`, `record_contribution`, `verify_contribution`,
+`reconcile_contribution`, `reject_contribution`, `reverse_contribution`.
+None of them are `SECURITY DEFINER` — every one relies on RLS for the
+real authorisation boundary and adds a friendly error only as a
+convenience on top of it.
+
+- **Members cannot create ledger entries.** `contribution_records`' old
+  Phase 1 insert policy let a member insert a row for themselves; Phase 3
+  removes that entirely — only `owner`/`administrator`/`treasurer` can
+  insert, matching "members submit nothing; treasurers record what was
+  actually received."
+- **Members see only their own records.** The select policy was
+  `member_id = auth.uid() OR has_group_role(..., [manager roles,
+  auditor])` — a plain member's query for the group's contribution
+  records returns only their own rows, verified directly in
+  `tests/security/contributions.test.ts` ("lets a member see only their
+  own contribution records, not the group's whole ledger").
+- **Verified records are locked by more than RLS.** RLS controls *who*
+  can run an `UPDATE`; a `before update` trigger,
+  `protect_verified_contribution_record()`, controls *what* they can
+  change once a record's status is `verified` or `reconciled` — any
+  attempt to alter the amount, currency, member, period, received date,
+  or payment method/reference on a locked record is rejected outright,
+  even for an owner, even via a direct `.update()` call that bypasses the
+  RPCs entirely. The only way out of that state is a transition to
+  `reversed`, which the trigger explicitly permits.
+- **Corrections are a new row, not an edit.** `reverse_contribution()`
+  flips the original record's status to `reversed` and stamps
+  `reversed_by`/`reversed_at`/`reversal_reason` — it never touches the
+  original's financial fields. If a correction is needed, it inserts a
+  **separate** row (`reversal_of` pointing back at the original) that
+  re-enters the normal `pending_verification` → `verify` → `reconcile`
+  workflow from scratch.
+- **Currency mixing is structurally impossible, not just checked.**
+  Neither `upsert_contribution_plan` nor `record_contribution` accepts a
+  currency parameter at all — both always read and use the group's own
+  `currency_code`. There is no code path, RPC argument, or client input
+  that could ever record a contribution in a different currency from the
+  rest of the group's ledger.
+- **Totals are never trusted from the client.** `src/lib/contributions.ts`
+  (`sumVerifiedAmount`, `computeMemberPeriodStatus`) and
+  `src/lib/contribution-periods.ts` (period/due-date math) are pure
+  TypeScript, unit-tested, and run only in Server Components against
+  query results already scoped by the RLS policies above — a member's
+  balance is always recomputed server-side from their own verified rows,
+  never read from a value the browser sent.
 
 ## Trusted session verification
 

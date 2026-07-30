@@ -31,18 +31,14 @@ export type ContributionType = "fixed" | "flexible";
 
 export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
 
-export type FinancialRecordStatus =
-  | "pending"
-  | "submitted"
+export type ContributionRecordStatus =
+  | "pending_verification"
   | "verified"
   | "reconciled"
-  | "partly_paid"
-  | "paid"
-  | "overdue"
-  | "approved"
   | "rejected"
-  | "cancelled"
   | "reversed";
+
+export type PaymentMethod = "cash" | "bank_transfer" | "mobile_money" | "cheque" | "other";
 
 export type WithdrawalStatus =
   | "pending"
@@ -131,6 +127,52 @@ export interface Database {
       accept_invitation: Fn<
         { p_token: string },
         { group_id: string; role: GroupRole }[]
+      >;
+      upsert_contribution_plan: Fn<
+        {
+          p_group_id: string;
+          p_plan_id: string | null;
+          p_is_flexible: boolean;
+          p_amount_minor_units: number | null;
+          p_minimum_amount_minor_units: number | null;
+          p_frequency: ContributionFrequency;
+          p_start_date: string;
+        },
+        { plan_id: string }[]
+      >;
+      record_contribution: Fn<
+        {
+          p_group_id: string;
+          p_member_id: string;
+          p_contribution_plan_id: string | null;
+          p_amount_minor_units: number;
+          p_period_start: string;
+          p_period_end: string;
+          p_received_at: string;
+          p_payment_method: PaymentMethod;
+          p_payment_reference: string | null;
+          p_notes: string | null;
+        },
+        { record_id: string }[]
+      >;
+      verify_contribution: Fn<{ p_record_id: string }, undefined>;
+      reconcile_contribution: Fn<{ p_record_id: string }, undefined>;
+      reject_contribution: Fn<{ p_record_id: string; p_reason: string }, undefined>;
+      reverse_contribution: Fn<
+        {
+          p_record_id: string;
+          p_reason: string;
+          p_replacement: {
+            amount_minor_units?: number;
+            period_start?: string;
+            period_end?: string;
+            received_at?: string;
+            payment_method?: PaymentMethod;
+            payment_reference?: string;
+            notes?: string;
+          } | null;
+        },
+        { record_id: string; replacement_id: string | null }[]
       >;
     };
     Tables: {
@@ -247,6 +289,7 @@ export interface Database {
           group_id: string;
           name: string;
           amount_minor_units: number | null;
+          minimum_amount_minor_units: number | null;
           currency_code: string;
           frequency: ContributionFrequency;
           is_flexible: boolean;
@@ -261,6 +304,7 @@ export interface Database {
           group_id: string;
           name: string;
           amount_minor_units?: number | null;
+          minimum_amount_minor_units?: number | null;
           currency_code: string;
           frequency: ContributionFrequency;
           is_flexible?: boolean;
@@ -272,6 +316,7 @@ export interface Database {
         {
           name?: string;
           amount_minor_units?: number | null;
+          minimum_amount_minor_units?: number | null;
           status?: "active" | "inactive";
           end_date?: string | null;
         }
@@ -286,12 +331,20 @@ export interface Database {
           currency_code: string;
           period_start: string | null;
           period_end: string | null;
-          status: FinancialRecordStatus;
+          received_at: string;
+          payment_method: PaymentMethod | null;
+          payment_reference: string | null;
+          status: ContributionRecordStatus;
           submitted_at: string | null;
           verified_by: string | null;
           verified_at: string | null;
           reconciled_by: string | null;
           reconciled_at: string | null;
+          rejected_by: string | null;
+          rejected_at: string | null;
+          rejection_reason: string | null;
+          reversed_by: string | null;
+          reversed_at: string | null;
           reversal_of: string | null;
           reversal_reason: string | null;
           notes: string | null;
@@ -307,12 +360,15 @@ export interface Database {
           currency_code: string;
           period_start?: string | null;
           period_end?: string | null;
-          status?: FinancialRecordStatus;
+          received_at?: string;
+          payment_method?: PaymentMethod | null;
+          payment_reference?: string | null;
+          status?: ContributionRecordStatus;
           notes?: string | null;
           created_by: string;
         },
         {
-          status?: FinancialRecordStatus;
+          status?: ContributionRecordStatus;
           verified_by?: string | null;
           verified_at?: string | null;
           reconciled_by?: string | null;

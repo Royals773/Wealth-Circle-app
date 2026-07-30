@@ -25,7 +25,7 @@ async function loadOverviewCounts(groupId: string) {
       .from("contribution_records")
       .select("id", { count: "exact", head: true })
       .eq("group_id", groupId)
-      .in("status", ["pending", "submitted"]),
+      .eq("status", "pending_verification"),
     supabase
       .from("loans")
       .select("id", { count: "exact", head: true })
