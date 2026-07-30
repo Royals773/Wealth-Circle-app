@@ -11,26 +11,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ContributionReasonDialog } from "@/components/dashboard/contribution-reason-dialog";
-import { verifyContributionAction, reconcileContributionAction } from "@/lib/actions/contributions";
+import { RepaymentReasonDialog } from "@/components/dashboard/repayment-reason-dialog";
+import { verifyRepaymentAction, reconcileRepaymentAction } from "@/lib/actions/loans";
 import { formatMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validations/contributions";
-import type { ContributionRecordStatus, PaymentMethod } from "@/lib/types/database";
+import type { PaymentMethod, RepaymentStatus } from "@/lib/types/database";
 
-export interface ContributionRecordRow {
+export interface RepaymentRow {
   id: string;
-  memberName: string;
+  borrowerName: string;
   amountMinorUnits: number;
+  principalPortionMinorUnits: number;
+  interestPortionMinorUnits: number;
   currencyCode: string;
-  periodStart: string | null;
-  periodEnd: string | null;
   receivedAt: string;
   paymentMethod: PaymentMethod | null;
   paymentReference: string | null;
-  status: ContributionRecordStatus;
+  status: RepaymentStatus;
 }
 
-const STATUS_LABELS: Record<ContributionRecordStatus, string> = {
+const STATUS_LABELS: Record<RepaymentStatus, string> = {
   pending_verification: "Pending verification",
   verified: "Verified",
   reconciled: "Reconciled",
@@ -38,7 +38,7 @@ const STATUS_LABELS: Record<ContributionRecordStatus, string> = {
   reversed: "Reversed",
 };
 
-const STATUS_VARIANT: Record<ContributionRecordStatus, "secondary" | "outline" | "destructive"> = {
+const STATUS_VARIANT: Record<RepaymentStatus, "secondary" | "outline" | "destructive"> = {
   pending_verification: "outline",
   verified: "secondary",
   reconciled: "secondary",
@@ -46,33 +46,27 @@ const STATUS_VARIANT: Record<ContributionRecordStatus, "secondary" | "outline" |
   reversed: "destructive",
 };
 
-export function ContributionRecordsTable({
-  groupId,
-  records,
-}: {
-  groupId: string;
-  records: ContributionRecordRow[];
-}) {
+export function RepaymentsTable({ groupId, repayments }: { groupId: string; repayments: RepaymentRow[] }) {
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<{ mode: "reject" | "reverse"; recordId: string } | null>(null);
+  const [dialog, setDialog] = useState<{ mode: "reject" | "reverse"; repaymentId: string } | null>(null);
 
-  function verify(recordId: string) {
+  function verify(repaymentId: string) {
     setError(null);
-    setPendingId(recordId);
+    setPendingId(repaymentId);
     startTransition(async () => {
-      const result = await verifyContributionAction(groupId, recordId);
+      const result = await verifyRepaymentAction(groupId, repaymentId);
       if (result.error) setError(result.error);
       setPendingId(null);
     });
   }
 
-  function reconcile(recordId: string) {
+  function reconcile(repaymentId: string) {
     setError(null);
-    setPendingId(recordId);
+    setPendingId(repaymentId);
     startTransition(async () => {
-      const result = await reconcileContributionAction(groupId, recordId);
+      const result = await reconcileRepaymentAction(groupId, repaymentId);
       if (result.error) setError(result.error);
       setPendingId(null);
     });
@@ -85,9 +79,9 @@ export function ContributionRecordsTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Member</TableHead>
+              <TableHead>Borrower</TableHead>
               <TableHead>Amount</TableHead>
-              <TableHead>Period</TableHead>
+              <TableHead>Principal / interest</TableHead>
               <TableHead>Received</TableHead>
               <TableHead>Method</TableHead>
               <TableHead>Status</TableHead>
@@ -95,52 +89,49 @@ export function ContributionRecordsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {records.map((record) => {
-              const rowPending = isPending && pendingId === record.id;
+            {repayments.map((repayment) => {
+              const rowPending = isPending && pendingId === repayment.id;
               return (
-                <TableRow key={record.id}>
-                  <TableCell className="font-medium text-foreground">{record.memberName}</TableCell>
-                  <TableCell>{formatMoney(record.amountMinorUnits, record.currencyCode)}</TableCell>
+                <TableRow key={repayment.id}>
+                  <TableCell className="font-medium text-foreground">{repayment.borrowerName}</TableCell>
+                  <TableCell>{formatMoney(repayment.amountMinorUnits, repayment.currencyCode)}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {record.periodStart
-                      ? `${new Date(record.periodStart).toLocaleDateString("en-GB")} – ${
-                          record.periodEnd ? new Date(record.periodEnd).toLocaleDateString("en-GB") : ""
-                        }`
-                      : "—"}
+                    {formatMoney(repayment.principalPortionMinorUnits, repayment.currencyCode)} /{" "}
+                    {formatMoney(repayment.interestPortionMinorUnits, repayment.currencyCode)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(record.receivedAt).toLocaleDateString("en-GB")}
+                    {new Date(repayment.receivedAt).toLocaleDateString("en-GB")}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {record.paymentMethod ? PAYMENT_METHOD_LABELS[record.paymentMethod] : "—"}
+                    {repayment.paymentMethod ? PAYMENT_METHOD_LABELS[repayment.paymentMethod] : "—"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_VARIANT[record.status]}>{STATUS_LABELS[record.status]}</Badge>
+                    <Badge variant={STATUS_VARIANT[repayment.status]}>{STATUS_LABELS[repayment.status]}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      {record.status === "pending_verification" ? (
+                      {repayment.status === "pending_verification" ? (
                         <>
-                          <Button size="sm" variant="outline" disabled={rowPending} onClick={() => verify(record.id)}>
+                          <Button size="sm" variant="outline" disabled={rowPending} onClick={() => verify(repayment.id)}>
                             Verify
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
                             disabled={rowPending}
-                            onClick={() => setDialog({ mode: "reject", recordId: record.id })}
+                            onClick={() => setDialog({ mode: "reject", repaymentId: repayment.id })}
                           >
                             Reject
                           </Button>
                         </>
                       ) : null}
-                      {record.status === "verified" ? (
+                      {repayment.status === "verified" ? (
                         <>
                           <Button
                             size="sm"
                             variant="outline"
                             disabled={rowPending}
-                            onClick={() => reconcile(record.id)}
+                            onClick={() => reconcile(repayment.id)}
                           >
                             Reconcile
                           </Button>
@@ -148,18 +139,18 @@ export function ContributionRecordsTable({
                             size="sm"
                             variant="ghost"
                             disabled={rowPending}
-                            onClick={() => setDialog({ mode: "reverse", recordId: record.id })}
+                            onClick={() => setDialog({ mode: "reverse", repaymentId: repayment.id })}
                           >
                             Reverse
                           </Button>
                         </>
                       ) : null}
-                      {record.status === "reconciled" ? (
+                      {repayment.status === "reconciled" ? (
                         <Button
                           size="sm"
                           variant="ghost"
                           disabled={rowPending}
-                          onClick={() => setDialog({ mode: "reverse", recordId: record.id })}
+                          onClick={() => setDialog({ mode: "reverse", repaymentId: repayment.id })}
                         >
                           Reverse
                         </Button>
@@ -174,10 +165,10 @@ export function ContributionRecordsTable({
       </div>
 
       {dialog ? (
-        <ContributionReasonDialog
+        <RepaymentReasonDialog
           mode={dialog.mode}
           groupId={groupId}
-          recordId={dialog.recordId}
+          repaymentId={dialog.repaymentId}
           open={true}
           onOpenChange={(open) => {
             if (!open) setDialog(null);

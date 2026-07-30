@@ -126,7 +126,7 @@ export default async function MembersPage({ params }: { params: Promise<{ groupI
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(member.joinedAt).toLocaleDateString()}
+                    {new Date(member.joinedAt).toLocaleDateString("en-GB")}
                   </TableCell>
                 </TableRow>
               ))}

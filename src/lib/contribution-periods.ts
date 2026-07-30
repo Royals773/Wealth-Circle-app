@@ -43,7 +43,11 @@ function fromEpochDay(epochDay: number): CalendarDate {
   return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
 }
 
-function addDaysISO(iso: string, days: number): string {
+/** Adds (or subtracts, for a negative `days`) whole days to a plain
+ * `YYYY-MM-DD` date string. Exported for callers that need a single
+ * date-shifted value (e.g. applying a grace period to a due date)
+ * without needing a full period. */
+export function addDaysISO(iso: string, days: number): string {
   return toISODate(fromEpochDay(toEpochDay(parseISODate(iso)) + days));
 }
 
@@ -58,6 +62,14 @@ function addMonthsClamped(date: CalendarDate, months: number): CalendarDate {
   const m = (((totalMonths % 12) + 12) % 12) + 1;
   const d = Math.min(date.d, daysInMonth(y, m));
   return { y, m, d };
+}
+
+/** Adds whole months to a plain `YYYY-MM-DD` date string — the
+ * string-based counterpart to `addDaysISO`, used by loan scheduling to
+ * turn a term-in-months into an end date. Same clamping behaviour as
+ * `addMonthsClamped`. */
+export function addMonths(iso: string, months: number): string {
+  return toISODate(addMonthsClamped(parseISODate(iso), months));
 }
 
 const FREQUENCY_DAYS: Partial<Record<ContributionFrequency, number>> = {

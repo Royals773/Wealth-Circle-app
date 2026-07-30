@@ -352,11 +352,11 @@ function MyContributionsTable({
             {records.map((record) => (
               <TableRow key={record.id}>
                 <TableCell className="text-muted-foreground">
-                  {record.period_start ? new Date(record.period_start).toLocaleDateString() : "—"}
+                  {record.period_start ? new Date(record.period_start).toLocaleDateString("en-GB") : "—"}
                 </TableCell>
                 <TableCell>{formatMoney(record.amount_minor_units, record.currency_code)}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {new Date(record.received_at).toLocaleDateString()}
+                  {new Date(record.received_at).toLocaleDateString("en-GB")}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {record.payment_method ? PAYMENT_METHOD_LABELS[record.payment_method] : "—"}

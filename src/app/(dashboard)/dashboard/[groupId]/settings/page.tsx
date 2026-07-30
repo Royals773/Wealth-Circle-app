@@ -7,6 +7,7 @@ import {
   ContributionPlanForm,
   type ContributionPlanSummary,
 } from "@/components/dashboard/contribution-plan-form";
+import { LoanPolicyForm, type LoanPolicySummary } from "@/components/dashboard/loan-policy-form";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
@@ -78,6 +79,35 @@ async function loadActiveContributionPlan(groupId: string): Promise<Contribution
   };
 }
 
+async function loadActiveLoanPolicy(groupId: string): Promise<LoanPolicySummary | null> {
+  if (!isSupabaseConfigured) return null;
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("loan_products")
+    .select(
+      "status, max_loan_bps_of_contributions, max_amount_minor_units, interest_rate_bps, min_term_months, max_term_months, repayment_frequency, allow_overdue_members, grace_period_days",
+    )
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    enabled: data.status === "active",
+    maxLoanBpsOfContributions: data.max_loan_bps_of_contributions,
+    maxAmountMinorUnits: data.max_amount_minor_units,
+    interestRateBps: data.interest_rate_bps,
+    minTermMonths: data.min_term_months,
+    maxTermMonths: data.max_term_months,
+    repaymentFrequency: data.repayment_frequency,
+    allowOverdueMembers: data.allow_overdue_members,
+    gracePeriodDays: data.grace_period_days,
+  };
+}
+
 export default async function SettingsPage({
   params,
 }: {
@@ -89,9 +119,13 @@ export default async function SettingsPage({
     getCurrentMembershipRole(groupId),
   ]);
   const canManagePlan = currentRole !== null && roleHasCapability(currentRole, "manage_contribution_plans");
+  const canManageLoans = currentRole !== null && roleHasCapability(currentRole, "manage_loan_products");
   // Loaded regardless of role: this is what everyone sees displayed below,
   // not just what the edit form (owner/administrator/treasurer only) uses.
-  const plan = await loadActiveContributionPlan(groupId);
+  const [plan, loanPolicy] = await Promise.all([
+    loadActiveContributionPlan(groupId),
+    loadActiveLoanPolicy(groupId),
+  ]);
 
   return (
     <div>
@@ -176,6 +210,60 @@ export default async function SettingsPage({
             {canManagePlan ? (
               <CardContent className="border-t border-border pt-4">
                 <ContributionPlanForm groupId={groupId} currencyCode={settings.currencyCode} plan={plan} />
+              </CardContent>
+            ) : null}
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Loans</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Status</p>
+                <p className="font-medium text-foreground">
+                  {loanPolicy?.enabled ? "Enabled" : "Not enabled"}
+                </p>
+              </div>
+              {loanPolicy ? (
+                <>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Maximum loan</p>
+                    <p className="font-medium text-foreground">
+                      {(loanPolicy.maxLoanBpsOfContributions / 100).toFixed(2)}% of verified contributions
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Interest</p>
+                    <p className="font-medium text-foreground">
+                      {(loanPolicy.interestRateBps / 100).toFixed(2)}% one-time flat
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Repayment term</p>
+                    <p className="font-medium text-foreground">
+                      {loanPolicy.minTermMonths ? `${loanPolicy.minTermMonths}–` : "Up to "}
+                      {loanPolicy.maxTermMonths} months
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Repayment frequency</p>
+                    <p className="font-medium text-foreground">
+                      {CONTRIBUTION_FREQUENCY_LABELS[loanPolicy.repaymentFrequency]}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Overdue members</p>
+                    <p className="font-medium text-foreground">
+                      {loanPolicy.allowOverdueMembers ? "Still eligible to apply" : "Not eligible to apply"}
+                    </p>
+                  </div>
+                </>
+              ) : null}
+            </CardContent>
+            {canManageLoans ? (
+              <CardContent className="border-t border-border pt-4">
+                <LoanPolicyForm groupId={groupId} currencyCode={settings.currencyCode} policy={loanPolicy} />
               </CardContent>
             ) : null}
           </Card>

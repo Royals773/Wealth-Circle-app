@@ -167,6 +167,67 @@ records; everyone else sees only "My contributions" — there's no
 separate route or nav item, since a plain member has nothing else to see
 there anyway.
 
+## Loans and repayments (Phase 4)
+
+Extends the Phase 1 `loan_products`/`loan_applications`/`loans`/
+`repayments` tables rather than adding new ones —
+`supabase/migrations/0007_phase4_loans.sql` follows the same
+`SECURITY INVOKER` + explicit role check + audit log pattern as
+0002/0006, with twelve new RPCs covering the full lifecycle:
+`upsert_loan_product`, `apply_for_loan`, `mark_loan_under_review`,
+`decide_loan_application`, `cancel_loan_application`,
+`record_disbursement`, `mark_loan_defaulted`, `record_repayment`,
+`verify_repayment`, `reconcile_repayment`, `reject_repayment`,
+`reverse_repayment`. See
+[security-boundaries.md](./security-boundaries.md#loan-ledger-integrity-phase-4)
+for the RLS/trigger enforcement, including a real Phase 1 self-approval
+bug this migration fixed.
+
+**Lifecycle**: `apply_for_loan` recomputes eligibility (borrowing limit
+as a percentage of verified contributions, minus existing outstanding
+principal) entirely server-side and rejects anything over the limit,
+regardless of what the client sends. An application moves
+`submitted → under_review → approved` or `rejected`; approval snapshots
+the agreed terms (which may differ from what was requested) and creates
+a `loans` row with status `awaiting_disbursement` in the same
+transaction — never `active` yet. Only `record_disbursement`, called
+after an officer confirms the money actually left the group's bank
+account, moves it to `active`. From there, `record_repayment` /
+`verify_repayment` / `reconcile_repayment` / `reject_repayment` /
+`reverse_repayment` mirror the Phase 3 contribution ledger's workflow
+and immutability guarantees exactly.
+
+**No stored overdue/fully-repaid/partly-paid status.** `loans.status`
+only ever holds `awaiting_disbursement`/`active`/`defaulted`/`cancelled`
+— everything past that is computed by `src/lib/loans.ts`
+(`computeLoanStatus`, `computeLoanRepaymentSchedule`,
+`outstandingPrincipal`) from the schedule and verified repayments,
+called only from Server Components against RLS-scoped rows. This is the
+same reasoning Phase 3 already established for contributions: a stored
+flag can go stale without a background job this project doesn't run;
+a computed one can't. `computeLoanRepaymentSchedule` reuses
+`getPeriodContaining`/`listPeriodsBetween`/`addMonths` from
+`src/lib/contribution-periods.ts` directly for instalment due dates —
+the same period-generation primitive, not a re-implementation.
+
+**One-time flat interest and allocation.** `computeOneTimeFlatInterest`
+computes the interest once at approval time (stored on the `loans` row,
+never recomputed against a policy that might later change).
+`computeProportionalAllocation` splits every repayment between principal
+and interest in the loan's overall principal:total-repayable ratio —
+the one policy this phase implements, since one-time flat is the only
+supported interest type. All of `src/lib/loans.ts` and
+`src/lib/loan-eligibility.ts` are pure, integer-minor-units-only, and
+unit-tested (`src/lib/loans.test.ts`, `src/lib/loan-eligibility.test.ts`).
+
+**UI** mirrors the Contributions page's shape: `.../loans/page.tsx` is
+role-gated tabs (an officer "Overview" — review queue, disbursement
+recording, principal/interest stats — plus "My loans" for everyone,
+including the eligibility preview and apply flow), and
+`.../repayments/page.tsx` is an officer-only ledger (members see their
+own repayment history via the Loans page instead, since RLS already
+limits what they could see there anyway).
+
 ## Supabase-ready architecture (still works with zero credentials)
 
 Even though a real Supabase project is now connected for Phase 2, every
@@ -241,24 +302,24 @@ Two layers:
 
 - **Unit tests** (`npm run test`, Vitest): Zod validation schemas, the
   money conversion helpers, the permissions capability map, the
-  open-redirect guard in `src/lib/safe-redirect.ts`, and (Phase 3) the
-  contribution period/overdue-status math in
-  `src/lib/contribution-periods.test.ts` and `src/lib/contributions.test.ts`.
+  open-redirect guard in `src/lib/safe-redirect.ts`, the Phase 3
+  contribution period/overdue-status math (`contribution-periods.test.ts`,
+  `contributions.test.ts`), and the Phase 4 loan eligibility/schedule/
+  interest/allocation math (`loan-eligibility.test.ts`, `loans.test.ts`).
   These run with no Supabase project and are part of the standard build
   gate.
 - **Live security tests** (`npm run test:security`, gated behind real
   Supabase credentials — see `tests/security/README.md`): exercise Row
   Level Security and the invitation lifecycle
-  (`tenant-isolation.test.ts`) and the contribution ledger's RLS/RPCs/
-  immutability trigger (`contributions.test.ts`) against an actual
-  project using real test users and groups — tenant isolation,
-  self-promotion prevention, revoked/expired/already-used invitations,
-  atomic group creation, members unable to create or alter ledger
-  entries, and the verify/reconcile/reverse workflow. Skipped
-  automatically (not failed) when Supabase env vars aren't present, so
-  the standard build/test gate never depends on a live project. All 25
-  currently pass against a live project; running this suite is what
-  caught the two bugs fixed in `0003`/`0004` (see
+  (`tenant-isolation.test.ts`), the contribution ledger's RLS/RPCs/
+  immutability trigger (`contributions.test.ts`), and the loan ledger's
+  eligibility enforcement, self-approval prevention, and disbursement/
+  repayment workflow (`loans.test.ts`) against an actual project using
+  real test users and groups. Skipped automatically (not failed) when
+  Supabase env vars aren't present, so the standard build/test gate never
+  depends on a live project. All 43 currently pass against a live
+  project; running this suite is what caught the two bugs fixed in
+  `0003`/`0004` (see
   [security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)).
 
 UI composition is verified by building the app and visually checking key

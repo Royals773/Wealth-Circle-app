@@ -48,19 +48,27 @@ export type WithdrawalStatus =
   | "paid"
   | "reversed";
 
-export type LoanApplicationStatus = "pending" | "submitted" | "approved" | "rejected" | "cancelled";
-
-export type LoanStatus =
+export type LoanApplicationStatus =
+  | "draft"
+  | "submitted"
+  | "under_review"
   | "approved"
-  | "disbursed"
-  | "partly_paid"
-  | "paid"
-  | "overdue"
-  | "defaulted"
-  | "cancelled"
+  | "rejected"
+  | "cancelled";
+
+/** Deliberately does not include overdue/fully_repaid/partly_paid — those
+ * are computed server-side (src/lib/loans.ts) from the schedule and
+ * verified repayments, never stored. See docs/architecture.md. */
+export type LoanStatus = "awaiting_disbursement" | "active" | "defaulted" | "cancelled";
+
+export type RepaymentStatus =
+  | "pending_verification"
+  | "verified"
+  | "reconciled"
+  | "rejected"
   | "reversed";
 
-export type RepaymentStatus = "submitted" | "verified" | "reconciled" | "cancelled" | "reversed";
+export type InterestType = "one_time_flat";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "cancelled";
 
@@ -173,6 +181,84 @@ export interface Database {
           } | null;
         },
         { record_id: string; replacement_id: string | null }[]
+      >;
+      upsert_loan_product: Fn<
+        {
+          p_group_id: string;
+          p_product_id: string | null;
+          p_enabled: boolean;
+          p_max_loan_bps_of_contributions: number;
+          p_max_amount_minor_units: number | null;
+          p_interest_type: InterestType;
+          p_interest_rate_bps: number;
+          p_min_term_months: number | null;
+          p_max_term_months: number | null;
+          p_repayment_frequency: ContributionFrequency;
+          p_allow_overdue_members: boolean;
+          p_grace_period_days: number;
+        },
+        { product_id: string }[]
+      >;
+      apply_for_loan: Fn<
+        {
+          p_group_id: string;
+          p_amount_minor_units: number;
+          p_term_months: number;
+          p_purpose: string | null;
+        },
+        { application_id: string }[]
+      >;
+      mark_loan_under_review: Fn<{ p_application_id: string }, undefined>;
+      decide_loan_application: Fn<
+        {
+          p_application_id: string;
+          p_decision: "approved" | "rejected";
+          p_approved_amount_minor_units: number | null;
+          p_approved_term_months: number | null;
+          p_approved_interest_rate_bps: number | null;
+          p_approved_repayment_frequency: ContributionFrequency | null;
+          p_notes: string | null;
+        },
+        { application_id: string; loan_id: string | null }[]
+      >;
+      cancel_loan_application: Fn<{ p_application_id: string }, undefined>;
+      record_disbursement: Fn<
+        {
+          p_loan_id: string;
+          p_disbursement_date: string;
+          p_disbursement_reference: string | null;
+          p_disbursement_note: string | null;
+        },
+        undefined
+      >;
+      mark_loan_defaulted: Fn<{ p_loan_id: string; p_reason: string }, undefined>;
+      record_repayment: Fn<
+        {
+          p_loan_id: string;
+          p_amount_minor_units: number;
+          p_received_at: string;
+          p_payment_method: PaymentMethod;
+          p_payment_reference: string | null;
+          p_notes: string | null;
+        },
+        { repayment_id: string }[]
+      >;
+      verify_repayment: Fn<{ p_repayment_id: string }, undefined>;
+      reconcile_repayment: Fn<{ p_repayment_id: string }, undefined>;
+      reject_repayment: Fn<{ p_repayment_id: string; p_reason: string }, undefined>;
+      reverse_repayment: Fn<
+        {
+          p_repayment_id: string;
+          p_reason: string;
+          p_replacement: {
+            amount_minor_units?: number;
+            received_at?: string;
+            payment_method?: PaymentMethod;
+            payment_reference?: string;
+            notes?: string;
+          } | null;
+        },
+        { repayment_id: string; replacement_id: string | null }[]
       >;
     };
     Tables: {
@@ -419,9 +505,15 @@ export interface Database {
           group_id: string;
           name: string;
           description: string | null;
+          interest_type: InterestType;
           interest_rate_bps: number;
           max_amount_minor_units: number | null;
+          max_loan_bps_of_contributions: number;
+          min_term_months: number | null;
           max_term_months: number | null;
+          repayment_frequency: ContributionFrequency;
+          allow_overdue_members: boolean;
+          grace_period_days: number;
           status: "active" | "inactive";
           created_by: string;
           created_at: string;
@@ -431,15 +523,29 @@ export interface Database {
           group_id: string;
           name: string;
           description?: string | null;
+          interest_type?: InterestType;
           interest_rate_bps?: number;
           max_amount_minor_units?: number | null;
+          max_loan_bps_of_contributions?: number;
+          min_term_months?: number | null;
           max_term_months?: number | null;
+          repayment_frequency?: ContributionFrequency;
+          allow_overdue_members?: boolean;
+          grace_period_days?: number;
           status?: "active" | "inactive";
           created_by: string;
         },
         {
           name?: string;
           description?: string | null;
+          interest_rate_bps?: number;
+          max_amount_minor_units?: number | null;
+          max_loan_bps_of_contributions?: number;
+          min_term_months?: number | null;
+          max_term_months?: number | null;
+          repayment_frequency?: ContributionFrequency;
+          allow_overdue_members?: boolean;
+          grace_period_days?: number;
           status?: "active" | "inactive";
         }
       >;
@@ -457,6 +563,10 @@ export interface Database {
           reviewed_by: string | null;
           reviewed_at: string | null;
           decision_notes: string | null;
+          approved_amount_minor_units: number | null;
+          approved_term_months: number | null;
+          approved_interest_rate_bps: number | null;
+          approved_repayment_frequency: ContributionFrequency | null;
           created_at: string;
           updated_at: string;
         },
@@ -468,12 +578,17 @@ export interface Database {
           currency_code: string;
           term_months: number;
           purpose?: string | null;
+          status?: LoanApplicationStatus;
         },
         {
           status?: LoanApplicationStatus;
           reviewed_by?: string | null;
           reviewed_at?: string | null;
           decision_notes?: string | null;
+          approved_amount_minor_units?: number | null;
+          approved_term_months?: number | null;
+          approved_interest_rate_bps?: number | null;
+          approved_repayment_frequency?: ContributionFrequency | null;
         }
       >;
       loans: Table<
@@ -485,10 +600,19 @@ export interface Database {
           principal_minor_units: number;
           currency_code: string;
           interest_rate_bps: number;
+          interest_amount_minor_units: number;
+          total_repayable_minor_units: number;
           term_months: number;
+          repayment_frequency: ContributionFrequency;
           status: LoanStatus;
+          disbursed_by: string | null;
           disbursed_at: string | null;
-          due_date: string | null;
+          disbursement_date: string | null;
+          disbursement_reference: string | null;
+          disbursement_note: string | null;
+          defaulted_by: string | null;
+          defaulted_at: string | null;
+          default_reason: string | null;
           created_at: string;
           updated_at: string;
         },
@@ -499,12 +623,22 @@ export interface Database {
           principal_minor_units: number;
           currency_code: string;
           interest_rate_bps?: number;
+          interest_amount_minor_units: number;
+          total_repayable_minor_units: number;
           term_months: number;
+          repayment_frequency: ContributionFrequency;
+          status?: LoanStatus;
         },
         {
           status?: LoanStatus;
+          disbursed_by?: string | null;
           disbursed_at?: string | null;
-          due_date?: string | null;
+          disbursement_date?: string | null;
+          disbursement_reference?: string | null;
+          disbursement_note?: string | null;
+          defaulted_by?: string | null;
+          defaulted_at?: string | null;
+          default_reason?: string | null;
         }
       >;
       repayments: Table<
@@ -512,14 +646,26 @@ export interface Database {
           id: string;
           group_id: string;
           loan_id: string;
+          member_id: string;
           amount_minor_units: number;
           currency_code: string;
+          principal_portion_minor_units: number;
+          interest_portion_minor_units: number;
+          payment_method: PaymentMethod | null;
+          payment_reference: string | null;
+          notes: string | null;
+          received_at: string;
           status: RepaymentStatus;
           paid_at: string | null;
           verified_by: string | null;
           verified_at: string | null;
           reconciled_by: string | null;
           reconciled_at: string | null;
+          rejected_by: string | null;
+          rejected_at: string | null;
+          rejection_reason: string | null;
+          reversed_by: string | null;
+          reversed_at: string | null;
           reversal_of: string | null;
           reversal_reason: string | null;
           created_by: string;
@@ -529,8 +675,16 @@ export interface Database {
         {
           group_id: string;
           loan_id: string;
+          member_id: string;
           amount_minor_units: number;
           currency_code: string;
+          principal_portion_minor_units: number;
+          interest_portion_minor_units: number;
+          payment_method?: PaymentMethod | null;
+          payment_reference?: string | null;
+          notes?: string | null;
+          received_at?: string;
+          status?: RepaymentStatus;
           created_by: string;
         },
         {
@@ -539,6 +693,11 @@ export interface Database {
           verified_at?: string | null;
           reconciled_by?: string | null;
           reconciled_at?: string | null;
+          rejected_by?: string | null;
+          rejected_at?: string | null;
+          rejection_reason?: string | null;
+          reversed_by?: string | null;
+          reversed_at?: string | null;
         }
       >;
       approval_requests: Table<

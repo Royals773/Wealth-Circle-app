@@ -30,7 +30,7 @@ async function loadOverviewCounts(groupId: string) {
       .from("loans")
       .select("id", { count: "exact", head: true })
       .eq("group_id", groupId)
-      .in("status", ["disbursed", "partly_paid", "overdue"]),
+      .eq("status", "active"),
     supabase
       .from("approval_requests")
       .select("id", { count: "exact", head: true })

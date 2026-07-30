@@ -59,7 +59,7 @@ export function PendingInvitationsList({
               <p className="truncate text-sm font-medium text-foreground">{invitation.email}</p>
               <p className="text-xs text-muted-foreground">
                 {ROLE_LABELS[invitation.role]} · Expires{" "}
-                {new Date(invitation.expiresAt).toLocaleDateString()}
+                {new Date(invitation.expiresAt).toLocaleDateString("en-GB")}
               </p>
             </div>
             <Button

@@ -101,14 +101,58 @@ possibility) was also deferred — single-entry recording covers the
 actual requirement; bulk import can be added later without changing the
 ledger model.
 
-## Phase 4 — Loan applications and repayments
+## Phase 4 — Loan applications and repayments *(complete)*
 
-- Loan product configuration for loan officers
-- Member-facing loan application flow
-- Loan officer review/approval workflow
-- Disbursement recording (record-keeping only — no funds movement)
-- Repayment recording, verification and reconciliation
-- Loan status tracking through to paid/overdue/defaulted
+- Loan policy configuration (enabled/disabled, borrowing limit as a
+  percentage of a member's verified contributions plus an optional hard
+  ceiling, one-time flat interest rate, min/max repayment term,
+  repayment frequency, optional grace period, whether members with
+  overdue contributions/repayments remain eligible) — extends the
+  existing Settings page and the Phase 1 `loan_products` table rather
+  than a new table
+- Server-side-only eligibility and borrowing-limit calculation from
+  verified ledger data — a member's displayed maximum is advisory; the
+  real limit is recomputed and enforced inside `apply_for_loan()` on
+  every application, independent of anything the client sends
+- Member loan application flow: verified contribution balance, maximum
+  available loan, amount/term/purpose, a live interest and repayment
+  preview, a declaration, one open application per member per group at a
+  time (which also solves duplicate-submission-on-retry)
+- Officer review queue: mark under review, approve (with editable terms
+  distinct from what was requested — the difference is recorded) or
+  reject, with structural self-approval prevention at both the RLS and
+  RPC layers — see
+  [security-boundaries.md](./security-boundaries.md#loan-ledger-integrity-phase-4)
+- Disbursement recording as a distinct, explicit step — an approved
+  loan sits `awaiting_disbursement` and only becomes `active` once an
+  officer confirms the external bank transfer already happened; approval
+  alone never activates a loan
+- Repayment recording, verification and reconciliation consistent with
+  the Phase 3 contribution ledger — proportional principal/interest
+  allocation, partial/early/overpayment handling, rejection, and
+  reversal-with-optional-replacement, all with the same immutability
+  trigger pattern locking verified/reconciled records against direct edits
+- Loan status tracking: `awaiting_disbursement`/`active`/`defaulted`/
+  `cancelled` are the only stored states; "overdue" and "fully repaid"
+  are computed server-side from the repayment schedule and verified
+  repayments, never stored, avoiding a flag that could go stale
+- Treasurer/loan-officer dashboards (applications awaiting review,
+  awaiting disbursement, overdue loans, principal outstanding, interest
+  expected/received) and a member-facing loan detail view (schedule,
+  next repayment due, repayment history), both computed server-side from
+  RLS-scoped rows
+
+**A real Phase 1 RLS bug was found and fixed, not just extended**: the
+original `loan_applications` update policy allowed decision-role OR
+self, which meant an officer who was also the applicant could approve
+their own request. See security-boundaries.md.
+
+**Pre-launch requirement, not yet done**: appropriate UK legal and
+regulatory review of the group lending model and all customer-facing
+loan/interest wording, before any real group uses this feature.
+WealthCircle must never be presented as a bank, credit union, or
+regulated lender — this is a record-keeping layer for money that only
+ever moves through a group's own external bank account.
 
 ## Phase 5 — Withdrawals, dual approval and governance
 

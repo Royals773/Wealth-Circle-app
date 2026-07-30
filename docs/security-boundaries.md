@@ -234,6 +234,100 @@ convenience on top of it.
   balance is always recomputed server-side from their own verified rows,
   never read from a value the browser sent.
 
+## Loan ledger integrity (Phase 4)
+
+`supabase/migrations/0007_phase4_loans.sql` extends the Phase 1
+`loan_products`/`loan_applications`/`loans`/`repayments` tables with
+twelve `SECURITY INVOKER` RPCs, following the same pattern as Phase 2/3:
+`upsert_loan_product`, `apply_for_loan`, `mark_loan_under_review`,
+`decide_loan_application`, `cancel_loan_application`,
+`record_disbursement`, `mark_loan_defaulted`, `record_repayment`,
+`verify_repayment`, `reconcile_repayment`, `reject_repayment`,
+`reverse_repayment`.
+
+- **A real Phase 1 self-approval bug, found and fixed here.**
+  `loan_applications`' original update policy was `has_group_role(...)
+  OR applicant_id = auth.uid()` — if an applicant also held
+  `loan_officer`/`administrator`/`owner` in the same group, the officer
+  clause alone was sufficient to update *any* application, including
+  their own, to `approved`. Fixed by splitting it into two policies:
+  `loan_applications_decide_officers` requires both the officer role
+  **and** `applicant_id <> auth.uid()`; `loan_applications_cancel_own`
+  lets an applicant update only their own row, and only ever to
+  `cancelled` (enforced by its `WITH CHECK`, not just its `USING`
+  clause — an applicant attempting to set their own application to
+  `approved` matches the `USING` clause but fails `WITH CHECK`, which
+  Postgres reports as a real RLS violation rather than a silent no-op).
+  `decide_loan_application()` additionally checks
+  `applicant_id <> auth.uid()` itself, as defense-in-depth on top of the
+  RLS fix — `tests/security/loans.test.ts` verifies both layers
+  independently (a direct table `UPDATE` attempt, separately from the
+  RPC call).
+- **Members could previously read every other member's loan
+  applications and loans.** Both tables' original select policies were
+  member-of-group-only, no ownership check. Tightened to `borrower_id
+  = auth.uid() OR officer role` (loans) and `applicant_id = auth.uid()
+  OR officer role` (loan_applications) — the same class of fix Phase 3
+  made to `contribution_records`.
+- **Eligibility and the borrowing limit are enforced entirely inside
+  `apply_for_loan()`, never trusted from the client.** It independently
+  recomputes verified contributions, existing outstanding principal
+  across the member's active loans, and the group's policy from the
+  database on every call, and rejects any requested amount over the
+  result — a crafted direct RPC call with an inflated amount is rejected
+  exactly the same way the UI's own validation would have, because
+  it's the same server-side check either way.
+- **Approval never activates a loan.** `decide_loan_application()`
+  creates the `loans` row as `awaiting_disbursement`; only
+  `record_disbursement()`, callable only by an officer, transitions it
+  to `active` — there is no path from "approved" straight to "active."
+- **The overdue-members eligibility gate uses a documented
+  approximation, not exact period math, inside SQL.** Precisely
+  replicating `src/lib/contribution-periods.ts`'s calendar-period logic
+  in PL/pgSQL was judged not worth the added complexity/risk for a
+  binary eligibility gate (as opposed to the amount limit, which is
+  exact everywhere). `apply_for_loan()` instead checks whether a verified
+  contribution/repayment exists within roughly one repayment-frequency
+  period (7/14/30/90/365 days, plus any configured grace period) of
+  today. This is still a real, server-side, non-client-trusted check —
+  it just isn't calendar-exact the way the UI's own display (which uses
+  the precise period functions) is. **Found during manual testing**: the
+  original version of this check didn't account for *when the member
+  joined* at all, so a member who joined very recently (before a single
+  period had even elapsed for them) was incorrectly flagged as overdue
+  on contributions they'd never had a chance to make — contradicting the
+  join-date-aware display logic. Fixed in
+  `0008_fix_apply_for_loan_overdue_check.sql` by only evaluating the
+  contributions-overdue check once `group_memberships.joined_at` is
+  itself more than one period old. Still an approximation, now a more
+  correct one — worth revisiting further if a group's actual usage shows
+  it mismatching the precise UI display often enough to confuse
+  officers.
+- **No stored `overdue`/`fully_repaid`/`partly_paid` status.**
+  `loans.status` only ever holds `awaiting_disbursement`/`active`/
+  `defaulted`/`cancelled` (a check constraint enforces this). Everything
+  else is computed server-side from the repayment schedule and verified
+  repayments (`src/lib/loans.ts`) — the same reasoning as Phase 3's
+  contribution status, avoiding a flag that could go stale without a
+  cron job this project doesn't run.
+- **Verified/reconciled repayment records are locked the same way
+  verified contributions are.** A `before update` trigger,
+  `protect_verified_repayment_record()`, rejects direct edits to a
+  repayment's financial fields once it's `verified`/`reconciled`, with
+  the same single exception (a transition to `reversed`) as
+  `protect_verified_contribution_record()` in Phase 3. Corrections are a
+  new linked row via `reverse_repayment()`'s optional replacement, never
+  an edit to the original.
+- **One documented allocation policy.** Since one-time flat interest is
+  the only supported interest type, every repayment splits between
+  principal and interest in the loan's overall principal:total-repayable
+  ratio (`computeProportionalAllocation` in `src/lib/loans.ts`, mirrored
+  in the `record_repayment`/`reverse_repayment` RPCs) — not "interest
+  first" or any other policy. This is stored per-repayment
+  (`principal_portion_minor_units`/`interest_portion_minor_units`), not
+  recomputed later, so it stays consistent even if a loan's terms were
+  somehow queried again after the fact.
+
 ## Trusted session verification
 
 Every server-side "is this user authenticated" check — in Server
