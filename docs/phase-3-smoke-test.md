@@ -47,38 +47,72 @@ reversed (an earlier, deliberate step in this same checklist), so no
 record currently held that status. The filter was returning the correct,
 empty result.
 
-**Not separately exercised in this walkthrough** (single-account test
-group, so nothing to click through for these — already covered by the
-automated live security suite instead):
-- A plain member's Settings page correctly hiding "Edit contribution
-  plan" — enforced by `roleHasCapability` + the RLS policy on
-  `contribution_plans`, and covered by
-  `src/lib/permissions.test.ts` and the RLS-focused live tests.
-- One member being structurally unable to see another member's
-  contribution records — this is exactly what
-  `tests/security/contributions.test.ts`'s "lets a member see only their
-  own contribution records, not the group's whole ledger" test verifies
-  directly against two real accounts.
-- Flexible / flexible-with-minimum plan configuration — covered by
-  `src/lib/validations/contributions.test.ts`-style schema validation
-  (via `contribution-periods.test.ts`/`contributions.test.ts`'s coverage
-  of the flexible-plan overdue logic) rather than a manual click; worth a
-  quick manual check before real users, low risk given the automated
-  coverage.
+## Follow-up session: the two remaining manual checks
+
+Two items from the original "Not separately exercised" list were
+completed in a follow-up session, using a fresh throwaway owner account
+(`wc-phase3-check2-owner@example.com`) and a plain member account
+(`wc-phase3-check2-member@example.com`), both members of "Phase 3 Check2
+Group", both deleted afterward via a targeted script.
+
+| Step | Result |
+|---|---|
+| Plain member's Settings page hides "Edit contribution plan" | ✅ Confirmed — the button and the entire edit section are simply absent for the member account; only the read-only summary shows |
+| Save a flexible plan with no minimum | ✅ Confirmed |
+| Save a flexible plan with a minimum amount | ✅ Confirmed — see bug below |
+
+### Bug found and fixed: plan edits weren't reflected anywhere
+
+While checking the flexible-with-minimum save, the user reported the
+"Edit contribution plan" button becoming unresponsive after saving.
+Reproduced independently with a headless-browser script (Playwright,
+installed temporarily and removed afterward — never added to
+`package.json`) covering both a fresh page load and a browser
+back-button return: **no defect in the save/edit flow itself** — the
+value persisted correctly every time (verified by re-reading the actual
+input value after reopening the form, not just its visible label), and
+no console errors occurred either way.
+
+The real issue, once the user reframed it as "where do my changes
+appear": **`settings/page.tsx`'s "Contributions" summary card displayed
+the group's creation-time defaults (`groups.contribution_frequency`/
+`contribution_type`) and never reflected the actual active
+`contribution_plans` row that `ContributionPlanForm` edits.** A treasurer
+could save a plan change and see the page still showing the old
+frequency/type, with no visible confirmation the edit had taken effect
+anywhere except by reopening the edit form itself. This affected every
+role, not just the one being tested — a plain member viewing the same
+page would also see stale information.
+
+Fixed by loading the active plan for every viewer (not just managers)
+and displaying its live values — frequency, type, and amount or required
+minimum — directly in that card, with the group's original description/
+country/financial-year fields left as they were. Verified with the same
+headless-browser script: saving a fixed plan of £42.50 now shows "Type:
+Fixed" and "Amount each period: £42.50" in the card immediately, no
+reopening required. Re-ran the full suite afterward — build, lint, 64
+unit tests, 25 live security tests — all still pass.
+
+**Filter note** (from the original session): filtering by status
+"Reconciled" appeared to show nothing partway through that walkthrough,
+which looked like a bug — it wasn't. The one record that had reached
+"Reconciled" had since been reversed (an earlier, deliberate step in the
+same checklist), so no record currently held that status; the filter was
+returning the correct, empty result.
 
 ## Cleanup
 
-The test account and group were deleted via a targeted, non-bulk script
-immediately after this walkthrough — confirmed via script output
-(`deleting group: Phase 3 Test Group ...` / `deleting test user:
-wc-phase3-test@example.com`).
+All test accounts and groups from both sessions were deleted via
+targeted, non-bulk scripts immediately after use, matched by exact
+email — confirmed via script output each time. No temporary scripts
+remain in the repository; the temporarily-installed `playwright` package
+used only for the headless-browser reproduction was removed with
+`npm uninstall --no-save`, never added to `package.json` or
+`package-lock.json`.
 
 ## Before Phase 4
 
-1. Manually click through the flexible/flexible-with-minimum plan
-   configuration once, and the "member without treasurer capability sees
-   a restricted view" case with a second real account — both low-risk
-   given existing automated coverage, but not yet clicked by a human.
-2. Continue using Mailtrap for development email only — swap for a
-   production provider before real users, per
-   [phase-2-smoke-test.md](./phase-2-smoke-test.md#before-phase-3--and-before-real-users).
+Continue using Mailtrap for development email only — swap for a
+production provider before real users, per
+[phase-2-smoke-test.md](./phase-2-smoke-test.md#before-phase-3--and-before-real-users).
+No other known gaps remain from Phase 3's manual checklist.

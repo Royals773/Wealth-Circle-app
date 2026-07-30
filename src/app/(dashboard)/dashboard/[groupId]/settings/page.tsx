@@ -13,6 +13,7 @@ import { getCurrentMembershipRole } from "@/lib/data/current-membership";
 import { roleHasCapability } from "@/lib/permissions";
 import { CONTRIBUTION_FREQUENCY_LABELS } from "@/lib/validations/group";
 import { MONTHS } from "@/lib/data/months";
+import { formatMoney } from "@/lib/money";
 import type { ContributionFrequency, ContributionType } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -88,7 +89,9 @@ export default async function SettingsPage({
     getCurrentMembershipRole(groupId),
   ]);
   const canManagePlan = currentRole !== null && roleHasCapability(currentRole, "manage_contribution_plans");
-  const plan = canManagePlan ? await loadActiveContributionPlan(groupId) : null;
+  // Loaded regardless of role: this is what everyone sees displayed below,
+  // not just what the edit form (owner/administrator/treasurer only) uses.
+  const plan = await loadActiveContributionPlan(groupId);
 
   return (
     <div>
@@ -136,15 +139,33 @@ export default async function SettingsPage({
               <div>
                 <p className="text-sm text-muted-foreground">Frequency</p>
                 <p className="font-medium text-foreground">
-                  {CONTRIBUTION_FREQUENCY_LABELS[settings.contributionFrequency]}
+                  {CONTRIBUTION_FREQUENCY_LABELS[plan ? plan.frequency : settings.contributionFrequency]}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Type</p>
                 <p className="font-medium text-foreground capitalize">
-                  {settings.contributionType}
+                  {plan ? (plan.isFlexible ? "Flexible" : "Fixed") : settings.contributionType}
                 </p>
               </div>
+              {plan && !plan.isFlexible && plan.amountMinorUnits ? (
+                <div>
+                  <p className="text-sm text-muted-foreground">Amount each period</p>
+                  <p className="font-medium text-foreground">
+                    {formatMoney(plan.amountMinorUnits, settings.currencyCode)}
+                  </p>
+                </div>
+              ) : null}
+              {plan && plan.isFlexible ? (
+                <div>
+                  <p className="text-sm text-muted-foreground">Required minimum</p>
+                  <p className="font-medium text-foreground">
+                    {plan.minimumAmountMinorUnits
+                      ? formatMoney(plan.minimumAmountMinorUnits, settings.currencyCode)
+                      : "No minimum"}
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <p className="text-sm text-muted-foreground">Financial year starts</p>
                 <p className="font-medium text-foreground">
@@ -154,10 +175,6 @@ export default async function SettingsPage({
             </CardContent>
             {canManagePlan ? (
               <CardContent className="border-t border-border pt-4">
-                <p className="mb-3 text-sm text-muted-foreground">
-                  These values above reflect the group&apos;s original setup. Use this to update the
-                  active contribution plan members are actually being tracked against.
-                </p>
                 <ContributionPlanForm groupId={groupId} currencyCode={settings.currencyCode} plan={plan} />
               </CardContent>
             ) : null}
