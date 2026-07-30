@@ -199,13 +199,14 @@ URLs, and anything containing `://` fall back to a safe default.
 
 ## Bugs found during live Phase 2 testing
 
-The live security suite (`tests/security/`, 13 tests against a real
-Supabase project with two real test users and two real test groups)
-caught two real bugs that the RLS design review and unit tests could not
-have — both required an actual Postgres/PostgREST round trip to surface,
-which is exactly why the live suite exists alongside the design review.
-Both are fixed in follow-up migrations, applied after `0001`/`0002` on
-the live project rather than rewritten into already-deployed history:
+Real, executed tests against a live Supabase project — the automated live
+security suite (`tests/security/`, 13 tests, two real users, two real
+groups) and later a manual click-through smoke test — caught bugs that
+RLS design review and unit tests could not, because each required an
+actual Postgres/PostgREST round trip, or a real email round trip, to
+surface. Fixed in follow-up migrations applied after `0001`/`0002` on the
+live project (rather than rewritten into already-deployed history) or in
+application code, as appropriate:
 
 - **`0003_fix_group_creation_visibility.sql`** — `groups_select_members`
   only granted access via an existing `group_memberships` row. The
@@ -224,10 +225,48 @@ the live project rather than rewritten into already-deployed history:
   with it (Postgres error 42702, "ambiguous column reference"), so the
   function failed for every caller. Fixed by qualifying the column with a
   table alias.
+- **`0005_fix_onboarding_invite_links_lost.sql`** —
+  `create_group_with_setup()` called `create_invitation()` for each
+  initial invite using `perform`, which discards the function's return
+  value — including the one-time raw token. Since only a hash of the
+  token is ever stored (see below), this made every invitation created
+  during onboarding permanently unusable — created in the database, but
+  with no way for anyone to ever construct a working link to it. Fixed by
+  collecting and returning each invite's raw token, and the onboarding
+  wizard now shows a one-time "copy these links" screen before navigating
+  away.
+- **Server Actions exporting a plain constant** — every `"use server"`
+  action file also exported an `initial*ActionState` object for
+  `useActionState` to consume. Next.js requires every export from a
+  `"use server"` file to be an async function; this broke *every* form
+  submission in the app at runtime (sign-up, sign-in, onboarding, invite
+  creation — everything), and `next build` never caught it, because the
+  violation only surfaces when the action module is actually invoked, not
+  during build analysis. Only driving the real UI in a browser caught it.
+  Fixed by moving the initial-state constants to a separate, non-`"use
+  server"` module (`src/lib/actions/action-state.ts`).
+- **Email confirmation vulnerable to link prefetching** — found during
+  manual smoke testing, not automated testing. The original flow relied
+  on Supabase's hosted `{{ .ConfirmationURL }}` verify-and-redirect,
+  which consumes the single-use signup/recovery token on the first `GET`
+  request to it. Many email providers and corporate security gateways
+  automatically fetch links in incoming mail to scan them for safety
+  *before* the recipient ever opens the message, which silently burns the
+  token — the user's real click then fails with `otp_expired`. Fixed by
+  replacing the auto-verifying route with a two-step confirmation page
+  (`src/app/auth/confirm/page.tsx`): the `GET` only renders a page with an
+  explicit "Confirm" button; the token is verified only by the follow-up
+  `confirmEmailAction`, which fires solely on that explicit user click. A
+  prefetch now just loads a harmless static page. Supabase's "Confirm
+  signup" and "Reset Password" email templates must point at this route
+  directly (`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash
+  }}&type=signup&next={{ .RedirectTo }}`) rather than the default
+  `{{ .ConfirmationURL }}` — see the Phase 2 smoke-test record for
+  current status of that dashboard change.
 
-Neither bug allowed unauthorized access — both were straightforward
+None of these bugs allowed unauthorized access — all were
 denial-of-legitimate-access failures (the opposite failure mode from a
-security hole), caught before any real user could hit them.
+security hole), each caught before it could affect a real user.
 
 ## What this phase does not yet include
 

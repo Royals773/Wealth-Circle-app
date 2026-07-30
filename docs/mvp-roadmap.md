@@ -41,12 +41,22 @@
 - Multi-group membership and switching, backed by real membership rows
 - Audit logging for group/invitation lifecycle events
 
+A manual, click-through smoke test (separate from the automated suites
+above) confirmed the full flow end-to-end using two real accounts — see
+[phase-2-smoke-test.md](./phase-2-smoke-test.md) for the detailed
+results. It also surfaced and fixed a real bug (email confirmation was
+vulnerable to link prefetching — see security-boundaries.md) and
+identified the one item still genuinely unverified: a real "click the
+email link" round trip, blocked this session by external email-delivery
+obstacles unrelated to WealthCircle's code (documented in that file).
+
 Deferred to a later phase, not part of Phase 2's explicit scope:
 transactional email delivery of invitations (copy-link is implemented;
-sending the email itself needs a provider decision), and a dedicated
-member role-management UI (the RLS enforcement — including
-self-promotion prevention — exists and is tested, but there's no "change
-someone's role" screen yet).
+sending the email itself needs a provider decision — see
+phase-2-smoke-test.md for what was tried), and a dedicated member
+role-management UI (the RLS enforcement — including self-promotion
+prevention — exists and is tested, but there's no "change someone's
+role" screen yet).
 
 ## Phase 3 — Contributions and bank-statement reconciliation
 

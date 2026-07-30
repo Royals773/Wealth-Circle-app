@@ -55,18 +55,27 @@ redirected to `/sign-in?next=<original path>`.
 ## Authentication flow
 
 - **Sign-up**: `signUpAction` (`src/lib/actions/auth.ts`) calls
-  `supabase.auth.signUp()` with `emailRedirectTo` pointing at
-  `/auth/callback?next=/onboarding`. The error message is deliberately
-  identical whether the email is new or already registered (Supabase's
+  `supabase.auth.signUp()` with `emailRedirectTo` pointing at the final
+  destination (e.g. `/onboarding`) — this becomes `{{ .RedirectTo }}` in
+  the email template. The error message is deliberately identical
+  whether the email is new or already registered (Supabase's
   `user_already_exists`/`email_exists` error codes are treated the same
   as success), so the form can't be used to enumerate accounts.
-- **Email verification**: two route handlers exist because Supabase
-  supports two link shapes. `src/app/auth/callback/route.ts` exchanges a
-  PKCE `?code=` for a session (the path used by `emailRedirectTo` above,
-  via Supabase's hosted verify redirect). `src/app/auth/confirm/route.ts`
-  handles the `?token_hash=&type=` shape some email templates use
-  directly. Both validate any `next` redirect target with
-  `src/lib/safe-redirect.ts` before using it.
+- **Email verification**: `src/app/auth/confirm/page.tsx` is a **two-step**
+  confirmation page, not an auto-verifying route — this is a deliberate
+  fix for a real bug found during manual testing (see
+  [security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)):
+  a `GET` that verifies immediately is indistinguishable, from the
+  server's perspective, from an email provider's automatic link-safety
+  prefetch, which silently burns the single-use token before the
+  recipient ever clicks. The page renders an explicit "Confirm" button;
+  only submitting it (`confirmEmailAction`) calls `verifyOtp()`. Supabase's
+  "Confirm signup" and "Reset Password" email templates must link here
+  directly with `token_hash`/`type` — see security-boundaries.md for the
+  exact template snippet. `src/app/auth/callback/route.ts` (PKCE `?code=`
+  exchange) still exists for any future OAuth-provider redirect but is no
+  longer used by the email flows. Both validate any `next` redirect
+  target with `src/lib/safe-redirect.ts` before using it.
 - **Sign-in**: `signInAction` validates and calls
   `supabase.auth.signInWithPassword()`, then redirects to a validated
   `next` if one was supplied (e.g. by the proxy bouncing a signed-out

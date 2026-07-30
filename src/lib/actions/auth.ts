@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { getAppUrl, isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getSafeRedirect } from "@/lib/safe-redirect";
@@ -57,7 +58,11 @@ export async function signUpAction(
     password: parsed.data.password,
     options: {
       data: { full_name: parsed.data.fullName },
-      emailRedirectTo: `${getAppUrl()}/auth/callback?next=${encodeURIComponent("/onboarding")}`,
+      // Becomes {{ .RedirectTo }} in the "Confirm signup" email template —
+      // see docs/architecture.md for why that template must use
+      // token_hash + /auth/confirm rather than the default
+      // {{ .ConfirmationURL }}.
+      emailRedirectTo: `${getAppUrl()}/onboarding`,
     },
   });
 
@@ -127,7 +132,7 @@ export async function forgotPasswordAction(
 
   const supabase = await createClient();
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${getAppUrl()}/auth/callback?next=${encodeURIComponent("/reset-password")}`,
+    redirectTo: `${getAppUrl()}/reset-password`,
   });
 
   // Always report success, whether or not the address is registered, so
@@ -231,7 +236,7 @@ export async function registerForInvitationAction(
     password: parsed.data.password,
     options: {
       data: { full_name: parsed.data.fullName },
-      emailRedirectTo: `${getAppUrl()}/auth/callback?next=${encodeURIComponent(`/invitations/${token}`)}`,
+      emailRedirectTo: `${getAppUrl()}/invitations/${token}`,
     },
   });
 
@@ -246,4 +251,44 @@ export async function registerForInvitationAction(
   }
 
   return { status: "success" };
+}
+
+/**
+ * Performs the actual email/recovery-link verification. Deliberately
+ * separated from the page that renders — see src/app/auth/confirm/page.tsx —
+ * so that loading the link (a GET request, which an email provider's
+ * link-safety scanner may issue automatically before the recipient ever
+ * clicks) never by itself consumes the single-use token. Only this
+ * explicit, user-initiated action does.
+ */
+export async function confirmEmailAction(
+  _prevState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const tokenHash = String(formData.get("tokenHash") ?? "");
+  const type = String(formData.get("type") ?? "") as EmailOtpType;
+  const next = getSafeRedirect(
+    String(formData.get("next") ?? ""),
+    type === "recovery" ? "/reset-password" : "/onboarding",
+  );
+
+  if (!tokenHash || !type) {
+    return { status: "error", formError: "This link is invalid." };
+  }
+
+  if (!isSupabaseConfigured) {
+    return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
+
+  if (error) {
+    return {
+      status: "error",
+      formError: "This link is invalid or has expired. Please request a new one.",
+    };
+  }
+
+  redirect(next);
 }
