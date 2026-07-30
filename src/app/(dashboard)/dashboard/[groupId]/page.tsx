@@ -1,49 +1,262 @@
 import type { Metadata } from "next";
-import { Users, HandCoins, Landmark, ClipboardCheck, Activity } from "lucide-react";
+import Link from "next/link";
+import { Users, HandCoins, Landmark, AlertTriangle, Wallet, History } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentMembershipRole } from "@/lib/data/current-membership";
+import { roleHasCapability } from "@/lib/permissions";
+import {
+  loadActiveMembers,
+  loadGroupContributionSummary,
+  loadMemberMissedContributions,
+  loadMyRecords,
+} from "@/lib/data/contribution-summary";
+import { loadActiveLoanProduct, loadGroupLoanSummary, loadMemberLoanEligibility } from "@/lib/data/loan-summary";
+import { sumVerifiedAmount } from "@/lib/contributions";
+import { formatMoney } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Overview" };
 
-async function loadOverviewCounts(groupId: string) {
-  if (!isSupabaseConfigured) {
-    return { members: 0, pendingContributions: 0, openLoans: 0, pendingApprovals: 0 };
-  }
-
+async function loadGroupCurrency(groupId: string): Promise<string> {
   const supabase = await createClient();
+  const { data } = await supabase.from("groups").select("currency_code").eq("id", groupId).maybeSingle();
+  return data?.currency_code ?? "GBP";
+}
 
-  const [members, pendingContributions, openLoans, pendingApprovals] = await Promise.all([
-    supabase
-      .from("group_memberships")
-      .select("id", { count: "exact", head: true })
-      .eq("group_id", groupId)
-      .eq("status", "active"),
-    supabase
-      .from("contribution_records")
-      .select("id", { count: "exact", head: true })
-      .eq("group_id", groupId)
-      .eq("status", "pending_verification"),
-    supabase
-      .from("loans")
-      .select("id", { count: "exact", head: true })
-      .eq("group_id", groupId)
-      .eq("status", "active"),
-    supabase
-      .from("approval_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("group_id", groupId)
-      .eq("status", "pending"),
+async function AdminDashboard({ groupId, today }: { groupId: string; today: string }) {
+  const [members, contributionSummary, loanSummary, currencyCode] = await Promise.all([
+    loadActiveMembers(groupId),
+    loadGroupContributionSummary(groupId, today),
+    loadGroupLoanSummary(groupId, today),
+    loadGroupCurrency(groupId),
   ]);
 
-  return {
-    members: members.count ?? 0,
-    pendingContributions: pendingContributions.count ?? 0,
-    openLoans: openLoans.count ?? 0,
-    pendingApprovals: pendingApprovals.count ?? 0,
-  };
+  const contributionCurrency = contributionSummary.plan?.currencyCode ?? currencyCode;
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Group</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Active members" value={String(members.length)} icon={Users} />
+          <StatCard label="Overdue members" value={String(contributionSummary.overdueMemberCount)} icon={AlertTriangle} />
+          <StatCard
+            label="Applications awaiting review"
+            value={String(loanSummary.applicationsAwaitingReviewCount)}
+            icon={Landmark}
+          />
+          <StatCard label="Overdue loans" value={String(loanSummary.overdueCount)} icon={AlertTriangle} />
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Contributions</h2>
+        {!contributionSummary.plan ? (
+          <EmptyState
+            icon={HandCoins}
+            title="No contribution plan yet"
+            description="Configure one in Settings to start tracking expected and received contributions."
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <StatCard
+              label="Expected this period"
+              value={formatMoney(contributionSummary.expectedTotal, contributionCurrency)}
+              icon={HandCoins}
+            />
+            <StatCard
+              label="Received"
+              value={formatMoney(contributionSummary.receivedTotal, contributionCurrency)}
+              icon={HandCoins}
+            />
+            <StatCard
+              label="Outstanding this period"
+              value={formatMoney(contributionSummary.outstandingTotal, contributionCurrency)}
+              icon={HandCoins}
+            />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Loans</h2>
+        {!loanSummary.product ? (
+          <EmptyState
+            icon={Landmark}
+            title="No loan policy yet"
+            description="Configure one in Settings to start tracking loans for this group."
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Active loans" value={String(loanSummary.activeLoanCount)} icon={Landmark} />
+            <StatCard
+              label="Principal outstanding"
+              value={formatMoney(loanSummary.principalOutstanding, loanSummary.currencyCode)}
+              icon={Landmark}
+            />
+            <StatCard
+              label="Interest expected"
+              value={formatMoney(loanSummary.interestExpected, loanSummary.currencyCode)}
+              icon={Landmark}
+            />
+            <StatCard
+              label="Interest received"
+              value={formatMoney(loanSummary.interestReceived, loanSummary.currencyCode)}
+              icon={Landmark}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+async function MemberDashboard({ groupId, userId, today }: { groupId: string; userId: string; today: string }) {
+  const [myRecords, missedContributions, product] = await Promise.all([
+    loadMyRecords(groupId, userId),
+    loadMemberMissedContributions(groupId, userId, today),
+    loadActiveLoanProduct(groupId),
+  ]);
+  const { eligibility } = await loadMemberLoanEligibility(groupId, userId, product, today);
+
+  const verifiedTotal = sumVerifiedAmount(myRecords);
+  const verifiedCount = myRecords.filter((r) => r.status === "verified" || r.status === "reconciled").length;
+  const currencyCode = myRecords[0]?.currency_code ?? "GBP";
+  const recent = myRecords.slice(0, 5);
+
+  const usedPercent =
+    eligibility.maxLoanAmount > 0
+      ? Math.round(((eligibility.maxLoanAmount - eligibility.availableToBorrow) / eligibility.maxLoanAmount) * 100)
+      : 0;
+
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+        <StatCard label="Current balance" value={formatMoney(verifiedTotal, currencyCode)} icon={Wallet} />
+        <StatCard label="Total contributions" value={String(verifiedCount)} icon={History} />
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Loan eligibility</h2>
+        <Card>
+          <CardContent className="pt-6">
+            {eligibility.eligible ? (
+              <>
+                <p className="text-sm text-muted-foreground">You&apos;re eligible to borrow up to</p>
+                <p className="mt-1 text-2xl font-semibold text-foreground">
+                  {formatMoney(eligibility.availableToBorrow, currencyCode)}
+                </p>
+                <Progress value={usedPercent} className="mt-4" aria-label={`${usedPercent}% of borrowing limit used`} />
+                <p className="mt-2 text-xs text-muted-foreground">{usedPercent}% of your limit currently borrowed</p>
+                <Link
+                  href={`/dashboard/${groupId}/loans`}
+                  className="mt-4 inline-block text-sm font-medium text-primary hover:underline"
+                >
+                  Apply for a loan →
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-foreground">Not currently eligible for a loan</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  {eligibility.reasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Missed contributions</h2>
+        {missedContributions.length === 0 ? (
+          <EmptyState
+            icon={HandCoins}
+            title="Nothing missed"
+            description="You're caught up on every contribution period so far."
+          />
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Period</TableHead>
+                  <TableHead>Expected</TableHead>
+                  <TableHead>Paid</TableHead>
+                  <TableHead>Shortfall</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {missedContributions.map((period) => (
+                  <TableRow key={period.periodStart}>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(period.periodStart).toLocaleDateString("en-GB")} –{" "}
+                      {new Date(period.periodEnd).toLocaleDateString("en-GB")}
+                    </TableCell>
+                    <TableCell>{formatMoney(period.requiredAmount, currencyCode)}</TableCell>
+                    <TableCell>{formatMoney(period.verifiedAmount, currencyCode)}</TableCell>
+                    <TableCell>
+                      <Badge variant="destructive">{formatMoney(period.shortfallAmount, currencyCode)}</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-foreground">Recent contributions</h2>
+          <Link href={`/dashboard/${groupId}/contributions`} className="text-sm text-primary hover:underline">
+            View all →
+          </Link>
+        </div>
+        {recent.length === 0 ? (
+          <EmptyState
+            icon={HandCoins}
+            title="No contributions yet"
+            description="Once your treasurer records one for you, it will appear here."
+          />
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Received</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recent.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(record.received_at).toLocaleDateString("en-GB")}
+                    </TableCell>
+                    <TableCell>{formatMoney(record.amount_minor_units, record.currency_code)}</TableCell>
+                    <TableCell className="text-muted-foreground capitalize">
+                      {record.status.replace(/_/g, " ")}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default async function GroupOverviewPage({
@@ -52,38 +265,47 @@ export default async function GroupOverviewPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const counts = await loadOverviewCounts(groupId);
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div>
+        <PageHeader title="Overview" description="A snapshot of this group's members, contributions, loans and approvals." />
+        <EmptyState
+          icon={Users}
+          title="This preview isn't connected to a live database"
+          description="Once Supabase credentials are configured, your group's real numbers will appear here."
+        />
+      </div>
+    );
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const currentRole = await getCurrentMembershipRole(groupId);
+  const canViewAdminDashboard = currentRole !== null && roleHasCapability(currentRole, "view_reports");
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div>
       <PageHeader
         title="Overview"
-        description="A snapshot of this group's members, contributions, loans and approvals."
+        description={
+          canViewAdminDashboard
+            ? "A snapshot of this group's members, contributions, and loans."
+            : "Your contributions, loan eligibility, and account status in this group."
+        }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Active members" value={String(counts.members)} icon={Users} />
-        <StatCard
-          label="Contributions awaiting verification"
-          value={String(counts.pendingContributions)}
-          icon={HandCoins}
-        />
-        <StatCard label="Open loans" value={String(counts.openLoans)} icon={Landmark} />
-        <StatCard
-          label="Pending approvals"
-          value={String(counts.pendingApprovals)}
-          icon={ClipboardCheck}
-        />
-      </div>
-
-      <div className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Recent activity</h2>
-        <EmptyState
-          icon={Activity}
-          title="No activity yet"
-          description="Once your group starts recording contributions, loans and decisions, the most recent activity will appear here."
-        />
-      </div>
+      {canViewAdminDashboard ? (
+        <AdminDashboard groupId={groupId} today={today} />
+      ) : user ? (
+        <MemberDashboard groupId={groupId} userId={user.id} today={today} />
+      ) : (
+        <EmptyState icon={Users} title="Sign in required" description="Sign in to see your dashboard." />
+      )}
     </div>
   );
 }

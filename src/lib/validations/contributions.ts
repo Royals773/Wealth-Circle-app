@@ -42,6 +42,14 @@ export const recordContributionSchema = z.object({
 
 export type RecordContributionInput = z.infer<typeof recordContributionSchema>;
 
+// Same shape as recording one, minus the member — who a pending entry
+// belongs to can't be changed by editing it, only by reversing/
+// re-recording (matching contributions and loans elsewhere: corrections
+// change details, never reassign the underlying person).
+export const editContributionSchema = recordContributionSchema.omit({ memberId: true });
+
+export type EditContributionInput = z.infer<typeof editContributionSchema>;
+
 export const reasonSchema = z.object({
   reason: z
     .string()

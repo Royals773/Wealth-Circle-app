@@ -163,6 +163,19 @@ export interface Database {
         },
         { record_id: string }[]
       >;
+      edit_contribution: Fn<
+        {
+          p_record_id: string;
+          p_amount_minor_units: number;
+          p_period_start: string;
+          p_period_end: string;
+          p_received_at: string;
+          p_payment_method: PaymentMethod;
+          p_payment_reference: string | null;
+          p_notes: string | null;
+        },
+        undefined
+      >;
       verify_contribution: Fn<{ p_record_id: string }, undefined>;
       reconcile_contribution: Fn<{ p_record_id: string }, undefined>;
       reject_contribution: Fn<{ p_record_id: string; p_reason: string }, undefined>;

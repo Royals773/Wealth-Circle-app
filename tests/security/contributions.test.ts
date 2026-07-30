@@ -251,6 +251,78 @@ describe.skipIf(!isConfigured)("contribution ledger (live)", () => {
     expect(reject.error?.message).toMatch(/owners, administrators and treasurers/i);
   });
 
+  it("does not let a member edit a pending contribution", async () => {
+    const { error } = await memberClient.rpc("edit_contribution", {
+      p_record_id: memberRecordId,
+      p_amount_minor_units: 9999,
+      p_period_start: "2026-01-01",
+      p_period_end: "2026-01-31",
+      p_received_at: "2026-01-15",
+      p_payment_method: "cash",
+      p_payment_reference: null,
+      p_notes: null,
+    });
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/owners, administrators and treasurers/i);
+  });
+
+  it("lets an owner edit a pending contribution's amount, dates and reference", async () => {
+    const { error } = await ownerClient.rpc("edit_contribution", {
+      p_record_id: memberRecordId,
+      p_amount_minor_units: 5500,
+      p_period_start: "2026-01-01",
+      p_period_end: "2026-01-31",
+      p_received_at: "2026-01-16",
+      p_payment_method: "bank_transfer",
+      p_payment_reference: "REF-1-CORRECTED",
+      p_notes: "Corrected a typo in the original amount",
+    });
+    expect(error).toBeNull();
+
+    const { data: edited } = await ownerClient
+      .from("contribution_records")
+      .select("amount_minor_units, received_at, payment_method, payment_reference, status")
+      .eq("id", memberRecordId)
+      .single();
+    expect(edited?.amount_minor_units).toBe(5500);
+    expect(edited?.received_at).toBe("2026-01-16");
+    expect(edited?.payment_method).toBe("bank_transfer");
+    expect(edited?.payment_reference).toBe("REF-1-CORRECTED");
+    expect(edited?.status).toBe("pending_verification");
+
+    // Restore the amount the rest of the suite expects before verify/reconcile/reversal.
+    const { error: restoreErr } = await ownerClient.rpc("edit_contribution", {
+      p_record_id: memberRecordId,
+      p_amount_minor_units: 5000,
+      p_period_start: "2026-01-01",
+      p_period_end: "2026-01-31",
+      p_received_at: "2026-01-15",
+      p_payment_method: "cash",
+      p_payment_reference: "REF-1",
+      p_notes: null,
+    });
+    expect(restoreErr).toBeNull();
+  });
+
+  it("does not let an owner of another group edit a contribution in this group", async () => {
+    // RLS scopes the RPC's own lookup of the record, so a manager from an
+    // unrelated group can't even see the row to reach the role check —
+    // it fails with "not found" rather than a permission message, but the
+    // edit is denied either way.
+    const { error } = await otherOwnerClient.rpc("edit_contribution", {
+      p_record_id: memberRecordId,
+      p_amount_minor_units: 1,
+      p_period_start: "2026-01-01",
+      p_period_end: "2026-01-31",
+      p_received_at: "2026-01-15",
+      p_payment_method: "cash",
+      p_payment_reference: null,
+      p_notes: null,
+    });
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/contribution record not found/i);
+  });
+
   it("takes a contribution through verify -> reconcile", async () => {
     const { error: verifyErr } = await ownerClient.rpc("verify_contribution", {
       p_record_id: memberRecordId,
@@ -277,6 +349,21 @@ describe.skipIf(!isConfigured)("contribution ledger (live)", () => {
       .single();
     expect(afterReconcile?.status).toBe("reconciled");
     expect(afterReconcile?.reconciled_by).toBe(ownerId);
+  });
+
+  it("does not let a reconciled record be edited via edit_contribution — reversal is required instead", async () => {
+    const { error } = await ownerClient.rpc("edit_contribution", {
+      p_record_id: memberRecordId,
+      p_amount_minor_units: 6000,
+      p_period_start: "2026-01-01",
+      p_period_end: "2026-01-31",
+      p_received_at: "2026-01-15",
+      p_payment_method: "cash",
+      p_payment_reference: null,
+      p_notes: null,
+    });
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/only a record pending verification can be edited/i);
   });
 
   it("does not let a reconciled record's amount be edited directly, even by the owner", async () => {

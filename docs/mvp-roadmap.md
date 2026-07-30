@@ -154,7 +154,54 @@ WealthCircle must never be presented as a bank, credit union, or
 regulated lender — this is a record-keeping layer for money that only
 ever moves through a group's own external bank account.
 
-## Phase 5 — Withdrawals, dual approval and governance
+## Phase 5 — End-to-end dashboard experience *(complete)*
+
+An explicit, deliberate re-prioritisation by the product owner: rather
+than starting withdrawals/governance next, Phase 5 consolidated the
+already-built Phase 3/4 backend into three real, role-appropriate
+dashboards — the first thing a signed-in member actually sees.
+Withdrawals and governance move to Phase 6 (below), unchanged in scope,
+just later in sequence.
+
+- **Shared server-only calculation loaders**
+  (`src/lib/data/contribution-summary.ts`,
+  `src/lib/data/loan-summary.ts`) — the Contributions/Loans pages and
+  the Overview dashboard now call the *same* functions rather than
+  keeping parallel copies, so a number can never disagree between where
+  it's first shown and where it's summarised
+- **Treasurer dashboard** (Contributions page): a new `edit_contribution()`
+  RPC lets a still-pending entry be corrected in place (amount, dates,
+  method, reference, notes) without going through the reversal
+  workflow — allowed only while `status = 'pending_verification'`,
+  audit-logged like every other mutation; a new monthly contribution
+  status table shows every active member's expected/verified amount,
+  progress bar and status badge for the current period
+- **Member dashboard** (group Overview, `member` role): current balance,
+  total contributions, recent history, a missed-contributions list
+  (every period since joining with status `overdue`, each with its
+  shortfall), and a loan eligibility indicator using the exact same
+  `computeEligibility()` result the apply-for-loan flow itself uses
+- **Admin dashboard** (group Overview, officer roles — same
+  `view_reports` capability check used elsewhere): active member count,
+  overdue member count, expected/received/outstanding contributions,
+  and a loan summary (active loans, principal outstanding, interest
+  expected/received, applications awaiting review, overdue loans)
+- Mobile-first pass across the new dashboard content, verified at phone
+  width in the same guided walkthrough as every other phase
+
+A guided, click-through walkthrough with a throwaway demo group
+(cleaned up afterward, per the standing test-data policy) covered
+editing a pending entry, the monthly status table, both new dashboards,
+a full loan application → approval → disbursement cycle, and mobile
+responsiveness — no bugs found in the new work. It did surface and fix
+one pre-existing, unrelated cosmetic issue: a hydration console warning
+on `/sign-in` caused by the Grammarly browser extension injecting
+attributes into `<body>` before React hydrates — fixed by adding
+`suppressHydrationWarning` to `<body>` (it already existed on `<html>`,
+but that doesn't cascade to child elements); this suppresses only that
+one node's attribute diff, not real mismatches elsewhere.
+
+## Phase 6 — Withdrawals, dual approval and governance
 
 - Withdrawal request flow with mandatory two-person approval for groups
   that require it
@@ -164,7 +211,7 @@ ever moves through a group's own external bank account.
 - Financial correction workflow (reversal/adjustment entries with
   mandatory reasons) surfaced in the UI
 
-## Phase 6 — Reports, notifications and audit tools
+## Phase 7 — Reports, notifications and audit tools
 
 - Period reports (contributions, loans, group financial summary) with
   export
@@ -172,7 +219,7 @@ ever moves through a group's own external bank account.
 - Audit log viewer for auditors/owners/administrators
 - Document management against Supabase Storage
 
-## Phase 7 — Production security, testing and launch
+## Phase 8 — Production security, testing and launch
 
 - Full RLS policy review and penetration-style testing of tenant isolation
 - Rate limiting, dependency/security scanning, CI hardening

@@ -21,60 +21,28 @@ import {
   ContributionRecordsTable,
   type ContributionRecordRow,
 } from "@/components/dashboard/contribution-records-table";
+import { MonthlyContributionStatusTable } from "@/components/dashboard/monthly-contribution-status-table";
 import { ContributionFilters } from "@/components/dashboard/contribution-filters";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
 import { roleHasCapability } from "@/lib/permissions";
-import { getPeriodContaining, listPeriodsBetween } from "@/lib/contribution-periods";
 import {
-  computeMemberPeriodStatus,
-  requiredAmountForPeriod,
-  sumVerifiedAmount,
-  type MemberPeriodStatus,
-} from "@/lib/contributions";
+  loadActiveMembers,
+  loadGroupContributionSummary,
+  loadMyRecords,
+  loadPlan,
+  CONTRIBUTION_RECORD_COLUMNS,
+  type ActivePlan,
+  type RawContributionRecord,
+} from "@/lib/data/contribution-summary";
+import { getPeriodContaining } from "@/lib/contribution-periods";
+import { requiredAmountForPeriod, sumVerifiedAmount } from "@/lib/contributions";
 import { formatMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validations/contributions";
-import type {
-  ContributionFrequency,
-  ContributionRecordStatus,
-  PaymentMethod,
-} from "@/lib/types/database";
+import type { ContributionRecordStatus } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "Contributions" };
-
-interface ActivePlan {
-  id: string;
-  isFlexible: boolean;
-  amountMinorUnits: number | null;
-  minimumAmountMinorUnits: number | null;
-  frequency: ContributionFrequency;
-  startDate: string;
-  currencyCode: string;
-}
-
-interface ActiveMember {
-  userId: string;
-  fullName: string;
-  joinedAt: string;
-}
-
-interface RawRecord {
-  id: string;
-  member_id: string;
-  amount_minor_units: number;
-  currency_code: string;
-  period_start: string | null;
-  period_end: string | null;
-  received_at: string;
-  payment_method: PaymentMethod | null;
-  payment_reference: string | null;
-  status: ContributionRecordStatus;
-  reversal_of: string | null;
-}
-
-const RECORD_COLUMNS =
-  "id, member_id, amount_minor_units, currency_code, period_start, period_end, received_at, payment_method, payment_reference, status, reversal_of";
 
 const STATUS_LABELS: Record<ContributionRecordStatus, string> = {
   pending_verification: "Pending verification",
@@ -84,73 +52,14 @@ const STATUS_LABELS: Record<ContributionRecordStatus, string> = {
   reversed: "Reversed",
 };
 
-async function loadPlan(groupId: string): Promise<ActivePlan | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("contribution_plans")
-    .select(
-      "id, is_flexible, amount_minor_units, minimum_amount_minor_units, frequency, start_date, currency_code",
-    )
-    .eq("group_id", groupId)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!data) return null;
-
-  return {
-    id: data.id,
-    isFlexible: data.is_flexible,
-    amountMinorUnits: data.amount_minor_units,
-    minimumAmountMinorUnits: data.minimum_amount_minor_units,
-    frequency: data.frequency,
-    startDate: data.start_date,
-    currencyCode: data.currency_code,
-  };
-}
-
-async function loadActiveMembers(groupId: string): Promise<ActiveMember[]> {
-  const supabase = await createClient();
-  const { data: memberships } = await supabase
-    .from("group_memberships")
-    .select("user_id, joined_at")
-    .eq("group_id", groupId)
-    .eq("status", "active");
-
-  if (!memberships || memberships.length === 0) return [];
-
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .in(
-      "id",
-      memberships.map((m) => m.user_id),
-    );
-
-  const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
-
-  return memberships.map((m) => ({
-    userId: m.user_id,
-    fullName: nameById.get(m.user_id) ?? "Unknown member",
-    joinedAt: m.joined_at.slice(0, 10),
-  }));
-}
-
-async function loadAllRecords(groupId: string): Promise<RawRecord[]> {
-  const supabase = await createClient();
-  const { data } = await supabase.from("contribution_records").select(RECORD_COLUMNS).eq("group_id", groupId);
-  return data ?? [];
-}
-
 async function loadFilteredRecords(
   groupId: string,
   filters: { member?: string; status?: string; from?: string; to?: string },
-): Promise<(RawRecord & { memberName: string })[]> {
+): Promise<(RawContributionRecord & { memberName: string })[]> {
   const supabase = await createClient();
   let query = supabase
     .from("contribution_records")
-    .select(RECORD_COLUMNS)
+    .select(CONTRIBUTION_RECORD_COLUMNS)
     .eq("group_id", groupId)
     .order("received_at", { ascending: false })
     .limit(200);
@@ -173,96 +82,7 @@ async function loadFilteredRecords(
   return data.map((r) => ({ ...r, memberName: nameById.get(r.member_id) ?? "Unknown member" }));
 }
 
-async function loadMyRecords(groupId: string, userId: string): Promise<RawRecord[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("contribution_records")
-    .select(RECORD_COLUMNS)
-    .eq("group_id", groupId)
-    .eq("member_id", userId)
-    .order("received_at", { ascending: false });
-  return data ?? [];
-}
-
-interface OverviewStats {
-  expectedTotal: number;
-  receivedTotal: number;
-  verifiedTotal: number;
-  pendingTotal: number;
-  outstandingTotal: number;
-  overdueMemberCount: number;
-  fullyPaidCount: number;
-  partlyPaidCount: number;
-  unpaidCount: number;
-}
-
-function computeOverviewStats(plan: ActivePlan, members: ActiveMember[], allRecords: RawRecord[], today: string): OverviewStats {
-  const currentPeriod = getPeriodContaining(plan.startDate, plan.frequency, today);
-  const target = {
-    isFlexible: plan.isFlexible,
-    amountMinorUnits: plan.amountMinorUnits,
-    minimumAmountMinorUnits: plan.minimumAmountMinorUnits,
-  };
-
-  let expectedTotal = 0;
-  let currentPeriodVerifiedTotal = 0;
-  let fullyPaidCount = 0;
-  let partlyPaidCount = 0;
-  let unpaidCount = 0;
-  const overdueMemberIds = new Set<string>();
-
-  for (const member of members) {
-    const effectiveFrom = member.joinedAt > plan.startDate ? member.joinedAt : plan.startDate;
-    const periods = listPeriodsBetween(plan.startDate, plan.frequency, effectiveFrom, today);
-
-    for (const period of periods) {
-      const periodRecords = allRecords.filter(
-        (r) => r.member_id === member.userId && r.period_start === period.start,
-      );
-      const verifiedTotal = sumVerifiedAmount(periodRecords);
-      const status: MemberPeriodStatus = computeMemberPeriodStatus({
-        plan: target,
-        period,
-        verifiedTotal,
-        today,
-        memberJoinedAt: member.joinedAt,
-      });
-
-      if (status === "overdue") overdueMemberIds.add(member.userId);
-
-      if (period.start === currentPeriod.start) {
-        currentPeriodVerifiedTotal += verifiedTotal;
-        const required = requiredAmountForPeriod(target);
-        if (required !== null) expectedTotal += required;
-        if (status === "paid") fullyPaidCount += 1;
-        else if (status === "partial") partlyPaidCount += 1;
-        else if (status === "unpaid" || status === "overdue") unpaidCount += 1;
-      }
-    }
-  }
-
-  const receivedTotal = allRecords
-    .filter((r) => r.status !== "rejected" && r.status !== "reversed")
-    .reduce((sum, r) => sum + r.amount_minor_units, 0);
-  const verifiedTotal = sumVerifiedAmount(allRecords);
-  const pendingTotal = allRecords
-    .filter((r) => r.status === "pending_verification")
-    .reduce((sum, r) => sum + r.amount_minor_units, 0);
-
-  return {
-    expectedTotal,
-    receivedTotal,
-    verifiedTotal,
-    pendingTotal,
-    outstandingTotal: Math.max(0, expectedTotal - currentPeriodVerifiedTotal),
-    overdueMemberCount: overdueMemberIds.size,
-    fullyPaidCount,
-    partlyPaidCount,
-    unpaidCount,
-  };
-}
-
-function toRecordRow(record: RawRecord & { memberName: string }): ContributionRecordRow {
+function toRecordRow(record: RawContributionRecord & { memberName: string }): ContributionRecordRow {
   return {
     id: record.id,
     memberName: record.memberName,
@@ -280,12 +100,10 @@ function toRecordRow(record: RawRecord & { memberName: string }): ContributionRe
 function MyContributionsTable({
   plan,
   records,
-  joinedAt,
   today,
 }: {
   plan: ActivePlan | null;
-  records: RawRecord[];
-  joinedAt: string;
+  records: RawContributionRecord[];
   today: string;
 }) {
   if (records.length === 0) {
@@ -312,9 +130,13 @@ function MyContributionsTable({
       amountMinorUnits: plan.amountMinorUnits,
       minimumAmountMinorUnits: plan.minimumAmountMinorUnits,
     };
+    // A member's join date is always <= today <= the current period's
+    // end, so "was I already a member for this period" is always true
+    // here — there's nothing to check beyond the plan having a required
+    // amount at all.
     const currentPeriod = getPeriodContaining(plan.startDate, plan.frequency, today);
     const required = requiredAmountForPeriod(target);
-    if (required !== null && joinedAt <= currentPeriod.end) {
+    if (required !== null) {
       expectedTotal = required;
       const currentPeriodVerified = sumVerifiedAmount(
         records.filter((r) => r.period_start === currentPeriod.start),
@@ -416,26 +238,24 @@ export default async function ContributionsPage({
   const myRecords = user ? await loadMyRecords(groupId, user.id) : [];
 
   let plan: ActivePlan | null = null;
-  let members: ActiveMember[] = [];
-  let allRecords: RawRecord[] = [];
-  let filteredRecords: (RawRecord & { memberName: string })[] = [];
-  let stats: OverviewStats | null = null;
+  let filteredRecords: (RawContributionRecord & { memberName: string })[] = [];
+  let summaryPlan: ActivePlan | null = null;
+  let summaryStats: Awaited<ReturnType<typeof loadGroupContributionSummary>> | null = null;
+  let memberOptions: MemberOption[] = [];
 
   if (canManage) {
-    [plan, members, allRecords] = await Promise.all([
-      loadPlan(groupId),
+    const [summary, members] = await Promise.all([
+      loadGroupContributionSummary(groupId, today),
       loadActiveMembers(groupId),
-      loadAllRecords(groupId),
     ]);
+    summaryStats = summary;
+    summaryPlan = summary.plan;
+    plan = summary.plan;
+    memberOptions = members.map((m) => ({ id: m.userId, fullName: m.fullName }));
     filteredRecords = await loadFilteredRecords(groupId, filters);
-    if (plan) stats = computeOverviewStats(plan, members, allRecords, today);
   } else {
     plan = await loadPlan(groupId);
   }
-
-  const myJoinedAt = members.find((m) => m.userId === user?.id)?.joinedAt ?? today;
-
-  const memberOptions: MemberOption[] = members.map((m) => ({ id: m.userId, fullName: m.fullName }));
 
   const overviewContent = !plan ? (
     <EmptyState
@@ -449,28 +269,42 @@ export default async function ContributionsPage({
         <RecordContributionDialog groupId={groupId} members={memberOptions} />
       </div>
 
-      {stats ? (
+      {summaryStats ? (
         <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="Expected this period"
-            value={formatMoney(stats.expectedTotal, plan.currencyCode)}
+            value={formatMoney(summaryStats.expectedTotal, summaryPlan!.currencyCode)}
             icon={HandCoins}
           />
-          <StatCard label="Amount received" value={formatMoney(stats.receivedTotal, plan.currencyCode)} icon={HandCoins} />
-          <StatCard label="Amount verified" value={formatMoney(stats.verifiedTotal, plan.currencyCode)} icon={HandCoins} />
+          <StatCard label="Amount received" value={formatMoney(summaryStats.receivedTotal, summaryPlan!.currencyCode)} icon={HandCoins} />
+          <StatCard label="Amount verified" value={formatMoney(summaryStats.verifiedTotal, summaryPlan!.currencyCode)} icon={HandCoins} />
           <StatCard
             label="Pending verification"
-            value={formatMoney(stats.pendingTotal, plan.currencyCode)}
+            value={formatMoney(summaryStats.pendingTotal, summaryPlan!.currencyCode)}
             icon={HandCoins}
           />
           <StatCard
             label="Outstanding this period"
-            value={formatMoney(stats.outstandingTotal, plan.currencyCode)}
+            value={formatMoney(summaryStats.outstandingTotal, summaryPlan!.currencyCode)}
             icon={HandCoins}
           />
-          <StatCard label="Overdue members" value={String(stats.overdueMemberCount)} icon={HandCoins} />
-          <StatCard label="Fully paid (this period)" value={String(stats.fullyPaidCount)} icon={HandCoins} />
-          <StatCard label="Unpaid / partly paid (this period)" value={String(stats.unpaidCount + stats.partlyPaidCount)} icon={HandCoins} />
+          <StatCard label="Overdue members" value={String(summaryStats.overdueMemberCount)} icon={HandCoins} />
+          <StatCard label="Fully paid (this period)" value={String(summaryStats.fullyPaidCount)} icon={HandCoins} />
+          <StatCard label="Unpaid / partly paid (this period)" value={String(summaryStats.unpaidCount + summaryStats.partlyPaidCount)} icon={HandCoins} />
+        </div>
+      ) : null}
+
+      {summaryStats && summaryStats.memberStatuses.length > 0 ? (
+        <div className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Monthly contribution status</h2>
+          <MonthlyContributionStatusTable
+            rows={
+              filters.member
+                ? summaryStats.memberStatuses.filter((row) => row.memberId === filters.member)
+                : summaryStats.memberStatuses
+            }
+            currencyCode={summaryPlan!.currencyCode}
+          />
         </div>
       ) : null}
 
@@ -489,7 +323,7 @@ export default async function ContributionsPage({
   );
 
   const myContent = (
-    <MyContributionsTable plan={plan} records={myRecords} joinedAt={myJoinedAt} today={today} />
+    <MyContributionsTable plan={plan} records={myRecords} today={today} />
   );
 
   return (

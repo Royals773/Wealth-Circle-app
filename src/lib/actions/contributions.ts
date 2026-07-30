@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPeriodContaining } from "@/lib/contribution-periods";
 import {
   contributionPlanFormSchema,
+  editContributionSchema,
   reasonSchema,
   recordContributionSchema,
   reverseContributionSchema,
@@ -144,6 +145,63 @@ export async function recordContributionAction(
     p_group_id: groupId,
     p_member_id: parsed.data.memberId,
     p_contribution_plan_id: plan.id,
+    p_amount_minor_units: majorToMinorUnits(parsed.data.amountMajorUnits, plan.currency_code),
+    p_period_start: period.start,
+    p_period_end: period.end,
+    p_received_at: parsed.data.receivedAt,
+    p_payment_method: parsed.data.paymentMethod,
+    p_payment_reference: parsed.data.paymentReference ?? null,
+    p_notes: parsed.data.notes ?? null,
+  });
+
+  if (error) {
+    return { status: "error", formError: error.message };
+  }
+
+  revalidatePath(`/dashboard/${groupId}/contributions`);
+  return { status: "success" };
+}
+
+export async function editContributionAction(
+  groupId: string,
+  _prevState: ContributionActionState,
+  formData: FormData,
+): Promise<ContributionActionState> {
+  const recordId = String(formData.get("recordId") ?? "");
+  const parsed = editContributionSchema.safeParse({
+    amountMajorUnits: formData.get("amountMajorUnits"),
+    periodDate: formData.get("periodDate"),
+    receivedAt: formData.get("receivedAt"),
+    paymentMethod: formData.get("paymentMethod"),
+    paymentReference: formData.get("paymentReference") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+
+  if (!parsed.success || !recordId) {
+    return { status: "error", fieldErrors: parsed.success ? {} : fieldErrorsFromZod(parsed.error) };
+  }
+
+  if (!isSupabaseConfigured) {
+    return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
+  }
+
+  const { data: plan } = await loadActivePlan(groupId);
+
+  if (!plan) {
+    return { status: "error", formError: "Set up a contribution plan in Settings first." };
+  }
+
+  const period = getPeriodContaining(
+    plan.start_date,
+    plan.frequency as ContributionFrequency,
+    parsed.data.periodDate,
+  );
+
+  const { majorToMinorUnits } = await import("@/lib/money");
+  const supabase = await createClient();
+
+  const { error } = await supabase.rpc("edit_contribution", {
+    p_record_id: recordId,
     p_amount_minor_units: majorToMinorUnits(parsed.data.amountMajorUnits, plan.currency_code),
     p_period_start: period.start,
     p_period_end: period.end,

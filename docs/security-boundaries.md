@@ -234,6 +234,30 @@ convenience on top of it.
   balance is always recomputed server-side from their own verified rows,
   never read from a value the browser sent.
 
+## Editing a still-pending contribution (Phase 5)
+
+`supabase/migrations/0010_edit_pending_contribution.sql` adds
+`edit_contribution()`, filling the one real gap left in the Phase 3
+ledger: correcting a typo in an entry before it's ever been verified,
+without going through the heavier reversal workflow meant for records
+that have already progressed further.
+
+- **RLS already permitted this** — `protect_verified_contribution_record()`
+  only fires its blocking logic for `verified`/`reconciled` rows, so a
+  treasurer+ could already `UPDATE` a `pending_verification` row directly.
+  The RPC exists purely so the change is audit-logged (`contribution_edited`),
+  matching the "every mutation goes through an RPC" convention used
+  everywhere else in this schema, not because RLS alone was insufficient.
+- **`SECURITY INVOKER`, no bypass.** The RPC's own lookup of the target
+  record is itself RLS-scoped — an officer from an unrelated group can't
+  even see the row to reach the later role check; they get "record not
+  found" rather than a permission error, but the edit is denied either
+  way. Verified in `tests/security/contributions.test.ts`.
+- **Explicit status gate.** Any attempt to edit a `verified`, `reconciled`,
+  `rejected` or `reversed` record is rejected with a message pointing at
+  the reversal workflow instead — edit is deliberately a narrow,
+  pre-verification-only tool, not a general-purpose correction mechanism.
+
 ## Loan ledger integrity (Phase 4)
 
 `supabase/migrations/0007_phase4_loans.sql` extends the Phase 1

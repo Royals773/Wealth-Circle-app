@@ -251,6 +251,44 @@ including the eligibility preview and apply flow), and
 own repayment history via the Loans page instead, since RLS already
 limits what they could see there anyway).
 
+## End-to-end dashboards (Phase 5)
+
+Phase 5 didn't add new backend capability beyond one small RPC — it
+consolidated what Phases 3-4 already compute into three real,
+role-appropriate dashboards, and refactored the Contributions/Loans
+pages to source their numbers from the same place the new Overview
+dashboard does.
+
+**Shared server-only loaders** — `src/lib/data/contribution-summary.ts`
+and `src/lib/data/loan-summary.ts` — hold every group-wide and
+per-member aggregate calculation (expected/received/outstanding
+contributions, overdue member detection, monthly per-member status,
+missed-contribution periods, loan summary stats, member loan
+eligibility). `.../contributions/page.tsx` and `.../loans/page.tsx`
+call these instead of keeping local copies, and so does the group
+Overview page — a number like "expected this period" or "eligible to
+borrow up to" is computed exactly once per request, not re-derived in
+two places that could quietly drift apart.
+
+**`.../dashboard/[groupId]/page.tsx`** (the group Overview page) is now
+role-aware, split on the same `roleHasCapability(role, "view_reports")`
+check already used elsewhere: officer roles (owner/administrator/
+treasurer/loan_officer/auditor) see an **admin dashboard** (active/
+overdue member counts, expected/received/outstanding contributions,
+loan summary); a plain `member` sees a **member dashboard** (current
+balance, total contributions, recent history, a missed-contributions
+table, and a loan eligibility card using the exact `computeEligibility()`
+result the apply-for-loan flow itself uses — the two can never
+disagree).
+
+**Editing a still-pending contribution** — the one real gap Phase 3
+left: a treasurer could previously only reject-and-re-record or (after
+verification) reverse a mistaken entry, with nothing in between for a
+plain typo caught before verification. `edit_contribution()`
+(`supabase/migrations/0010_edit_pending_contribution.sql`) fills it,
+allowed only while a record is `pending_verification`; see
+[security-boundaries.md](./security-boundaries.md#editing-a-still-pending-contribution-phase-5).
+
 ## Supabase-ready architecture (still works with zero credentials)
 
 Even though a real Supabase project is now connected for Phase 2, every

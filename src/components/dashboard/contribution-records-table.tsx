@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ContributionReasonDialog } from "@/components/dashboard/contribution-reason-dialog";
+import { EditContributionDialog } from "@/components/dashboard/edit-contribution-dialog";
 import { verifyContributionAction, reconcileContributionAction } from "@/lib/actions/contributions";
 import { formatMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validations/contributions";
@@ -57,6 +58,7 @@ export function ContributionRecordsTable({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ mode: "reject" | "reverse"; recordId: string } | null>(null);
+  const [editingRecord, setEditingRecord] = useState<ContributionRecordRow | null>(null);
 
   function verify(recordId: string) {
     setError(null);
@@ -128,6 +130,14 @@ export function ContributionRecordsTable({
                             size="sm"
                             variant="ghost"
                             disabled={rowPending}
+                            onClick={() => setEditingRecord(record)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={rowPending}
                             onClick={() => setDialog({ mode: "reject", recordId: record.id })}
                           >
                             Reject
@@ -181,6 +191,17 @@ export function ContributionRecordsTable({
           open={true}
           onOpenChange={(open) => {
             if (!open) setDialog(null);
+          }}
+        />
+      ) : null}
+
+      {editingRecord ? (
+        <EditContributionDialog
+          groupId={groupId}
+          record={editingRecord}
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setEditingRecord(null);
           }}
         />
       ) : null}
