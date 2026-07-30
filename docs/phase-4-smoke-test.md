@@ -106,6 +106,32 @@ script output. A brief mid-walkthrough script also gave the owner
 account some verified contributions (needed to test self-application);
 that account was included in the same final cleanup.
 
+## Follow-up correction: exact calendar-period eligibility
+
+The day-count approximation flagged below as item 3 has been resolved.
+`apply_for_loan()`'s overdue-**contributions** check now uses an exact
+PL/pgSQL port of the same period math and overdue rule the UI display
+already used
+(`supabase/migrations/0009_exact_overdue_contribution_eligibility.sql`),
+so the server-side decision and the displayed status can no longer
+disagree. Verified two ways:
+
+- `tests/security/loan-eligibility-calendar.test.ts` (13 tests): calls
+  the new SQL period functions directly against the same boundary cases
+  already proven correct for the TypeScript version (weekly/biweekly/
+  monthly/quarterly/annually, month-end clamping for 28th–31st due
+  dates, leap years), then exercises `apply_for_loan()` end-to-end for
+  join date, partial contributions, contribution-status filtering
+  (pending/reversed must not count), and flexible plans with and
+  without a minimum — all using dates relative to the test's own run
+  time, not hardcoded historical dates, so the suite stays meaningful
+  indefinitely.
+- Full suite re-run after applying the migration: build, lint, 92/92
+  unit tests, 56/56 live security tests (43 previous + 13 new).
+
+The overdue-**repayments** check (a separate, narrower concern) was out
+of scope for this fix and still uses the day-count approximation.
+
 ## Before Phase 5
 
 1. **UK legal and regulatory review of the group lending model and all
@@ -115,9 +141,9 @@ that account was included in the same final cleanup.
 2. Continue using Mailtrap for development email only — swap for a
    production provider before real users, per
    [phase-2-smoke-test.md](./phase-2-smoke-test.md#before-phase-3--and-before-real-users).
-3. The overdue-members eligibility gate inside `apply_for_loan()` still
-   uses a documented day-count approximation (now join-date-aware, but
-   still not exact calendar period math) for the *contributions* and
-   *repayments* overdue checks — worth revisiting if real usage shows it
-   disagreeing with the precise UI display often enough to confuse
-   officers.
+3. ~~The overdue-members eligibility gate inside `apply_for_loan()` still
+   uses a documented day-count approximation~~ — **resolved for
+   contributions**, see "Follow-up correction" above. The
+   overdue-repayments check still uses the approximation; worth
+   revisiting if real usage shows it disagreeing with the precise UI
+   display often enough to confuse officers.

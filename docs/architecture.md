@@ -197,6 +197,29 @@ account, moves it to `active`. From there, `record_repayment` /
 `reverse_repayment` mirror the Phase 3 contribution ledger's workflow
 and immutability guarantees exactly.
 
+**Overdue-contribution eligibility is exact, not approximated.**
+`apply_for_loan`'s "does this member have overdue contributions"
+check — which gates eligibility unless a group's policy explicitly
+allows overdue members — is computed by
+`member_has_overdue_contributions()`
+(`supabase/migrations/0009_exact_overdue_contribution_eligibility.sql`),
+a faithful PL/pgSQL port of `contribution-periods.ts`'s period math
+(`add_months_clamped`/`contribution_period_start`/
+`contribution_period_index`/`contribution_period_end`) and
+`contributions.ts`'s `computeMemberPeriodStatus` overdue rule. SQL can't
+call TypeScript, so the algorithm is necessarily expressed twice, but
+`tests/security/loan-eligibility-calendar.test.ts` proves the two stay
+in agreement — calling the SQL period functions directly against the
+same boundary cases already proven correct for the TypeScript version
+(month-end clamping, leap years, 28th–31st due dates), plus end-to-end
+`apply_for_loan()` scenarios for join date, partial contributions,
+contribution-status filtering, and flexible plans with/without a
+minimum. See
+[security-boundaries.md](./security-boundaries.md#loan-ledger-integrity-phase-4)
+for the two earlier, less-exact iterations this replaced. The
+overdue-**repayments** check (separate from overdue-contributions) still
+uses a day-count approximation.
+
 **No stored overdue/fully-repaid/partly-paid status.** `loans.status`
 only ever holds `awaiting_disbursement`/`active`/`defaulted`/`cancelled`
 — everything past that is computed by `src/lib/loans.ts`
@@ -312,12 +335,14 @@ Two layers:
   Supabase credentials — see `tests/security/README.md`): exercise Row
   Level Security and the invitation lifecycle
   (`tenant-isolation.test.ts`), the contribution ledger's RLS/RPCs/
-  immutability trigger (`contributions.test.ts`), and the loan ledger's
+  immutability trigger (`contributions.test.ts`), the loan ledger's
   eligibility enforcement, self-approval prevention, and disbursement/
-  repayment workflow (`loans.test.ts`) against an actual project using
+  repayment workflow (`loans.test.ts`), and exact calendar-period
+  agreement between the SQL and TypeScript eligibility calculations
+  (`loan-eligibility-calendar.test.ts`) against an actual project using
   real test users and groups. Skipped automatically (not failed) when
   Supabase env vars aren't present, so the standard build/test gate never
-  depends on a live project. All 43 currently pass against a live
+  depends on a live project. All 56 currently pass against a live
   project; running this suite is what caught the two bugs fixed in
   `0003`/`0004` (see
   [security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)).

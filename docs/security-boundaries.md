@@ -281,28 +281,44 @@ twelve `SECURITY INVOKER` RPCs, following the same pattern as Phase 2/3:
   creates the `loans` row as `awaiting_disbursement`; only
   `record_disbursement()`, callable only by an officer, transitions it
   to `active` — there is no path from "approved" straight to "active."
-- **The overdue-members eligibility gate uses a documented
-  approximation, not exact period math, inside SQL.** Precisely
-  replicating `src/lib/contribution-periods.ts`'s calendar-period logic
-  in PL/pgSQL was judged not worth the added complexity/risk for a
-  binary eligibility gate (as opposed to the amount limit, which is
-  exact everywhere). `apply_for_loan()` instead checks whether a verified
-  contribution/repayment exists within roughly one repayment-frequency
-  period (7/14/30/90/365 days, plus any configured grace period) of
-  today. This is still a real, server-side, non-client-trusted check —
-  it just isn't calendar-exact the way the UI's own display (which uses
-  the precise period functions) is. **Found during manual testing**: the
-  original version of this check didn't account for *when the member
-  joined* at all, so a member who joined very recently (before a single
-  period had even elapsed for them) was incorrectly flagged as overdue
-  on contributions they'd never had a chance to make — contradicting the
-  join-date-aware display logic. Fixed in
-  `0008_fix_apply_for_loan_overdue_check.sql` by only evaluating the
-  contributions-overdue check once `group_memberships.joined_at` is
-  itself more than one period old. Still an approximation, now a more
-  correct one — worth revisiting further if a group's actual usage shows
-  it mismatching the precise UI display often enough to confuse
-  officers.
+- **The overdue-contributions eligibility check uses exact calendar-period
+  math, ported line-for-line from the TypeScript original — not an
+  approximation.** This went through two iterations:
+  - **Session 1** (`0007_phase4_loans.sql`): checked whether a verified
+    contribution existed within roughly one repayment-frequency period
+    (7/14/30/90/365 days) of today — a real, server-side,
+    non-client-trusted check, but not calendar-exact the way the UI's
+    own display (`computeMemberPeriodStatus` in
+    `src/lib/contributions.ts`) is.
+  - **Session 2, found during manual testing**
+    (`0008_fix_apply_for_loan_overdue_check.sql`): the day-count version
+    didn't account for *when the member joined* at all, so a member who
+    joined very recently (before a single period had even elapsed for
+    them) was incorrectly flagged as overdue on contributions they'd
+    never had a chance to make. Fixed by only evaluating the check once
+    `group_memberships.joined_at` was itself more than one period old —
+    still an approximation, now a more correct one.
+  - **Session 3** (`0009_exact_overdue_contribution_eligibility.sql`):
+    replaced the approximation entirely with an exact PL/pgSQL port of
+    `contribution-periods.ts`'s period math
+    (`add_months_clamped`/`contribution_period_start`/
+    `contribution_period_index`/`contribution_period_end`, faithfully
+    reproducing the month-length-clamping and bounded-correction-walk
+    logic, including leap years and 28th–31st due dates) and
+    `contributions.ts`'s `computeMemberPeriodStatus` overdue rule
+    (`member_has_overdue_contributions`, scanning every period since the
+    later of the plan's start date or the member's own join date). The
+    server-side decision and the displayed overdue status can no longer
+    disagree — they're the same algorithm, expressed twice because SQL
+    can't call TypeScript, with `tests/security/loan-eligibility-calendar.test.ts`
+    proving both implementations produce identical period boundaries for
+    the same inputs, plus end-to-end eligibility scenarios for join
+    date, partial contributions, contribution-status filtering
+    (pending/reversed must not count), and flexible plans with and
+    without a minimum. The overdue-**repayments** check (a separate,
+    narrower concern — whether a member's own loan has a missed
+    instalment) still uses the day-count approximation; not in scope for
+    this fix.
 - **No stored `overdue`/`fully_repaid`/`partly_paid` status.**
   `loans.status` only ever holds `awaiting_disbursement`/`active`/
   `defaulted`/`cancelled` (a check constraint enforces this). Everything
