@@ -4,10 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getSafeRedirect } from "@/lib/safe-redirect";
 
 /**
- * PKCE code-exchange callback. Not used by Supabase's default email
- * templates today (see src/app/auth/confirm/route.ts for those), but kept
- * as the standard entry point for any auth method that redirects back
- * with a `?code=` parameter — third-party OAuth providers, if ever added.
+ * PKCE code-exchange callback. Not used by the email confirmation or
+ * password-reset flows (see src/app/auth/confirm/page.tsx for those),
+ * but kept as the standard entry point for any auth method that
+ * redirects back with a `?code=` parameter — third-party OAuth
+ * providers, if ever added.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;

@@ -86,10 +86,12 @@ redirected to `/sign-in?next=<original path>`.
   returns to `/`.
 - **Password reset**: `forgotPasswordAction` always reports success
   regardless of whether the address is registered. The reset link goes
-  through `/auth/callback?next=/reset-password`; `resetPasswordAction`
-  checks a session actually exists before calling `updateUser()`, and
-  maps an expired/invalid link to a plain-language message rather than a
-  raw Supabase error.
+  through the same two-step `/auth/confirm` page as email verification
+  (with `type=recovery` and `next=/reset-password`), landing on
+  `/reset-password` only after the explicit confirm step;
+  `resetPasswordAction` checks a session actually exists before calling
+  `updateUser()`, and maps an expired/invalid link to a plain-language
+  message rather than a raw Supabase error.
 - Every server-side "is this user authenticated" check uses
   `supabase.auth.getUser()`, never `getSession()` — `getUser()`
   revalidates the JWT against Supabase's auth server rather than trusting
