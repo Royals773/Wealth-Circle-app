@@ -41,11 +41,14 @@ export type ContributionRecordStatus =
 export type PaymentMethod = "cash" | "bank_transfer" | "mobile_money" | "cheque" | "other";
 
 export type WithdrawalStatus =
-  | "pending"
+  | "draft"
+  | "submitted"
+  | "under_review"
   | "approved"
   | "rejected"
   | "cancelled"
-  | "paid"
+  | "awaiting_payment"
+  | "paid_externally"
   | "reversed";
 
 export type LoanApplicationStatus =
@@ -80,6 +83,8 @@ export type ApprovalSubjectType =
   | "member_role_change";
 
 export type VoteChoice = "for" | "against" | "abstain";
+
+export type GovernanceProposalStatus = "open" | "cancelled";
 
 interface Table<Row, Insert, Update> {
   Row: Row;
@@ -273,6 +278,64 @@ export interface Database {
         },
         { repayment_id: string; replacement_id: string | null }[]
       >;
+      upsert_withdrawal_policy: Fn<
+        {
+          p_group_id: string;
+          p_policy_id: string | null;
+          p_enabled: boolean;
+          p_min_amount_minor_units: number | null;
+          p_max_amount_minor_units: number | null;
+          p_notice_period_days: number;
+          p_allow_partial: boolean;
+          p_reviewer_roles: GroupRole[];
+          p_required_approvals: number;
+          p_allow_overdue_members: boolean;
+          p_block_members_with_active_loans: boolean;
+          p_large_withdrawal_threshold_minor_units: number | null;
+        },
+        { policy_id: string }[]
+      >;
+      request_withdrawal: Fn<
+        {
+          p_group_id: string;
+          p_amount_minor_units: number;
+          p_reason: string;
+          p_linked_proposal_id: string | null;
+        },
+        { request_id: string }[]
+      >;
+      cancel_withdrawal_request: Fn<{ p_request_id: string }, undefined>;
+      review_withdrawal_request: Fn<{ p_request_id: string }, undefined>;
+      decide_withdrawal_request: Fn<
+        { p_request_id: string; p_decision: "approved" | "rejected"; p_notes: string | null },
+        { request_id: string; new_status: string }[]
+      >;
+      confirm_withdrawal_payment: Fn<
+        {
+          p_request_id: string;
+          p_paid_amount_minor_units: number;
+          p_bank_reference: string;
+          p_paid_at: string;
+          p_note: string | null;
+        },
+        undefined
+      >;
+      reverse_withdrawal_payment: Fn<{ p_request_id: string; p_reason: string }, undefined>;
+      create_governance_proposal: Fn<
+        {
+          p_group_id: string;
+          p_title: string;
+          p_description: string | null;
+          p_category: string | null;
+          p_voting_opens_at: string;
+          p_voting_closes_at: string;
+          p_quorum_percent: number | null;
+          p_approval_threshold_percent: number;
+        },
+        { proposal_id: string }[]
+      >;
+      cancel_governance_proposal: Fn<{ p_proposal_id: string; p_reason: string }, undefined>;
+      cast_vote: Fn<{ p_proposal_id: string; p_choice: VoteChoice }, undefined>;
     };
     Tables: {
       profiles: Table<
@@ -484,12 +547,16 @@ export interface Database {
           currency_code: string;
           reason: string;
           status: WithdrawalStatus;
-          requires_dual_approval: boolean;
-          approved_by_1: string | null;
-          approved_at_1: string | null;
-          approved_by_2: string | null;
-          approved_at_2: string | null;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          decision_notes: string | null;
+          paid_amount_minor_units: number | null;
+          payment_date: string | null;
+          paid_bank_reference: string | null;
+          paid_by: string | null;
+          payment_note: string | null;
           paid_at: string | null;
+          linked_proposal_id: string | null;
           reversal_of: string | null;
           reversal_reason: string | null;
           created_at: string;
@@ -501,15 +568,64 @@ export interface Database {
           amount_minor_units: number;
           currency_code: string;
           reason: string;
-          requires_dual_approval?: boolean;
+          linked_proposal_id?: string | null;
         },
         {
           status?: WithdrawalStatus;
-          approved_by_1?: string | null;
-          approved_at_1?: string | null;
-          approved_by_2?: string | null;
-          approved_at_2?: string | null;
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          decision_notes?: string | null;
+          paid_amount_minor_units?: number | null;
+          payment_date?: string | null;
+          paid_bank_reference?: string | null;
+          paid_by?: string | null;
+          payment_note?: string | null;
           paid_at?: string | null;
+        }
+      >;
+      withdrawal_policies: Table<
+        {
+          id: string;
+          group_id: string;
+          status: "active" | "inactive";
+          min_amount_minor_units: number | null;
+          max_amount_minor_units: number | null;
+          notice_period_days: number;
+          allow_partial: boolean;
+          reviewer_roles: GroupRole[];
+          required_approvals: number;
+          allow_overdue_members: boolean;
+          block_members_with_active_loans: boolean;
+          large_withdrawal_threshold_minor_units: number | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          group_id: string;
+          status?: "active" | "inactive";
+          min_amount_minor_units?: number | null;
+          max_amount_minor_units?: number | null;
+          notice_period_days?: number;
+          allow_partial?: boolean;
+          reviewer_roles?: GroupRole[];
+          required_approvals?: number;
+          allow_overdue_members?: boolean;
+          block_members_with_active_loans?: boolean;
+          large_withdrawal_threshold_minor_units?: number | null;
+          created_by: string;
+        },
+        {
+          status?: "active" | "inactive";
+          min_amount_minor_units?: number | null;
+          max_amount_minor_units?: number | null;
+          notice_period_days?: number;
+          allow_partial?: boolean;
+          reviewer_roles?: GroupRole[];
+          required_approvals?: number;
+          allow_overdue_members?: boolean;
+          block_members_with_active_loans?: boolean;
+          large_withdrawal_threshold_minor_units?: number | null;
         }
       >;
       loan_products: Table<
@@ -759,10 +875,16 @@ export interface Database {
           group_id: string;
           title: string;
           description: string | null;
+          category: string | null;
           proposed_by: string;
-          status: ApprovalStatus;
-          voting_opens_at: string | null;
-          voting_closes_at: string | null;
+          status: GovernanceProposalStatus;
+          voting_opens_at: string;
+          voting_closes_at: string;
+          quorum_percent: number | null;
+          approval_threshold_percent: number;
+          cancelled_by: string | null;
+          cancelled_at: string | null;
+          cancelled_reason: string | null;
           created_at: string;
           updated_at: string;
         },
@@ -770,14 +892,18 @@ export interface Database {
           group_id: string;
           title: string;
           description?: string | null;
+          category?: string | null;
           proposed_by: string;
-          voting_opens_at?: string | null;
-          voting_closes_at?: string | null;
+          voting_opens_at: string;
+          voting_closes_at: string;
+          quorum_percent?: number | null;
+          approval_threshold_percent?: number;
         },
         {
-          status?: ApprovalStatus;
-          voting_opens_at?: string | null;
-          voting_closes_at?: string | null;
+          status?: GovernanceProposalStatus;
+          cancelled_by?: string | null;
+          cancelled_at?: string | null;
+          cancelled_reason?: string | null;
         }
       >;
       votes: Table<

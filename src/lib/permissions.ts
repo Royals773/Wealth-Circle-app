@@ -43,6 +43,7 @@ export const CAPABILITIES = [
   "record_contributions",
   "verify_contributions",
   "request_withdrawal",
+  "manage_withdrawal_policy",
   "approve_withdrawal",
   "manage_loan_products",
   "review_loan_applications",
@@ -70,17 +71,26 @@ const ROLE_CAPABILITIES: Record<GroupRole, ReadonlySet<Capability>> = {
     "approve_withdrawal",
     "record_repayments",
     "vote_on_proposal",
+    "create_governance_proposal",
     "view_reports",
   ]),
   loan_officer: new Set<Capability>([
     "manage_loan_products",
     "review_loan_applications",
     "record_repayments",
+    "request_withdrawal",
     "vote_on_proposal",
+    "create_governance_proposal",
     "view_reports",
   ]),
-  auditor: new Set<Capability>(["view_audit_log", "view_reports", "vote_on_proposal"]),
-  member: new Set<Capability>(["vote_on_proposal", "create_governance_proposal"]),
+  auditor: new Set<Capability>([
+    "view_audit_log",
+    "view_reports",
+    "request_withdrawal",
+    "vote_on_proposal",
+    "create_governance_proposal",
+  ]),
+  member: new Set<Capability>(["request_withdrawal", "vote_on_proposal", "create_governance_proposal"]),
 };
 
 export function roleHasCapability(role: GroupRole, capability: Capability): boolean {

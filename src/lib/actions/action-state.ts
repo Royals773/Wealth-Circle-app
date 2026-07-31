@@ -3,6 +3,8 @@ import type { OnboardingActionState } from "./onboarding";
 import type { InvitationActionState } from "./invitations";
 import type { ContributionActionState } from "./contributions";
 import type { LoanActionState } from "./loans";
+import type { WithdrawalActionState } from "./withdrawals";
+import type { GovernanceActionState } from "./governance";
 
 /**
  * Initial useActionState values, kept out of the "use server" action
@@ -14,3 +16,5 @@ export const initialOnboardingActionState: OnboardingActionState = { status: "id
 export const initialInvitationActionState: InvitationActionState = { status: "idle" };
 export const initialContributionActionState: ContributionActionState = { status: "idle" };
 export const initialLoanActionState: LoanActionState = { status: "idle" };
+export const initialWithdrawalActionState: WithdrawalActionState = { status: "idle" };
+export const initialGovernanceActionState: GovernanceActionState = { status: "idle" };

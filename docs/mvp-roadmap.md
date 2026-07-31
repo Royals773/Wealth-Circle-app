@@ -201,15 +201,83 @@ attributes into `<body>` before React hydrates — fixed by adding
 but that doesn't cascade to child elements); this suppresses only that
 one node's attribute diff, not real mismatches elsewhere.
 
-## Phase 6 — Withdrawals, dual approval and governance
+## Phase 6 — Withdrawals and governance *(complete)*
 
-- Withdrawal request flow with mandatory two-person approval for groups
-  that require it
-- Generic `approval_requests`/`approval_decisions` workflow surfaced in
-  the Approvals page for all sensitive-action types
-- Governance proposal creation, voting, and recorded outcomes
-- Financial correction workflow (reversal/adjustment entries with
-  mandatory reasons) surfaced in the UI
+Builds on `withdrawal_requests`, `approval_requests`/`approval_decisions`,
+`governance_proposals` and `votes` — all part of the Phase 1 schema but
+never wired up until now. Three real Phase 1 gaps were fixed along the
+way, not just extended: withdrawal requests could previously only be
+inserted by a manager role, never by the member they're actually for;
+the "two-person approval" was hardcoded via now-removed
+`approved_by_1`/`approved_by_2` columns instead of the configurable
+generic `approval_requests` pattern; and `votes` had no real access
+control — any group member could read every other member's individual
+vote at any time, including while voting was still open.
+
+- **Withdrawal policy** (Settings): enabled flag, min/max amount, notice
+  period before payment, whether partial withdrawals are allowed, which
+  roles may review requests, how many approvals are required, whether
+  overdue-contribution members remain eligible, whether members with an
+  active loan are blocked outright, and an optional large-withdrawal
+  threshold requiring a linked, passed governance proposal
+- **Safe withdrawable-balance calculation**, server-side only
+  (`request_withdrawal()`/`decide_withdrawal_request()`, mirrored for
+  display in `src/lib/withdrawals.ts`): available = verified
+  contributions − outstanding loan principal − amounts already reserved
+  by open requests **or already paid out** — the loan-protection rule
+  means a withdrawal can never leave a member's net verified
+  contributions below their outstanding loan principal
+- **Member withdrawal request flow**: available/reserved amount shown
+  up front, plain-language "WealthCircle records but doesn't hold or
+  transfer money" disclosure, one open request per member per group
+  (the same duplicate-submission protection pattern used for loan
+  applications), full lifecycle tracking, cancel while still pending
+- **Configurable multi-approval lifecycle**: `draft/submitted/
+  under_review/approved/rejected/cancelled/awaiting_payment/
+  paid_externally/reversed`, routed through the generic
+  `approval_requests`/`approval_decisions` pair so the required number
+  of sign-offs is a per-group policy setting, not a fixed two — with the
+  same self-approval prevention and one-decision-per-reviewer
+  guarantees used elsewhere
+- **External payment confirmation as a distinct, explicit step**:
+  approval alone never marks a withdrawal paid — a reviewer must
+  separately confirm the actual bank transfer (amount, date, reference,
+  optional note) before the ledger permanently reflects it; reversal
+  preserves the original record and requires a reason, the same
+  immutability-trigger pattern as contributions and repayments
+- **Governance**: proposal creation (any member) with title, description,
+  category, voting window, optional quorum, and approval threshold;
+  material terms locked once voting opens; one vote per eligible member
+  (a database constraint, not just application logic); eligibility is a
+  join-date-before-voting-opened comparison, the same point-in-time
+  approach already used for contribution/loan eligibility; live
+  individual votes and running tallies are visible only to owners,
+  administrators and auditors while voting is open — everyone sees the
+  full result once it closes
+- **Officer and member dashboards**: Withdrawals page (officer queue +
+  member request/lifecycle), Approvals page (cross-cutting queue of
+  requests awaiting the signed-in officer's decision), and the group
+  Overview page extended with Withdrawals/Governance stat groups for
+  both admin and member views — all sourced from shared server-side
+  loaders so numbers can never disagree between pages
+
+A guided walkthrough with a throwaway demo group surfaced two real bugs,
+both fixed and covered by new live security tests: (1) a member's
+available balance never decreased once a withdrawal was actually paid
+— only *open* requests were subtracted, so the same money could be
+requested again — fixed in `supabase/migrations/
+0012_fix_withdrawal_reserved_balance.sql`; (2) a plain member's
+Governance page showed what looked like the complete vote tally while
+voting was still open, when it was actually only their own vote
+(correctly RLS-restricted, but misleadingly presented as if complete)
+— fixed by gating the tally display on the viewer's actual visibility
+rather than showing partial data unconditionally.
+
+**Deferred, not silently dropped:** the roadmap's original "financial
+correction workflow surfaced in the UI" line. Nothing in Phases 3-4 has
+ever created an `approval_requests` row with `subject_type =
+'financial_correction'` — reversals go through their own direct RPCs.
+No UI was built against a data source that doesn't exist yet.
 
 ## Phase 7 — Reports, notifications and audit tools
 

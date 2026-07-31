@@ -289,6 +289,69 @@ plain typo caught before verification. `edit_contribution()`
 allowed only while a record is `pending_verification`; see
 [security-boundaries.md](./security-boundaries.md#editing-a-still-pending-contribution-phase-5).
 
+## Withdrawals and governance (Phase 6)
+
+Builds the write path on `withdrawal_requests`/`withdrawal_policies`
+and `governance_proposals`/`votes` — all present since the Phase 1
+schema but unused until now — via
+`supabase/migrations/0011_phase6_withdrawals_governance.sql` and a
+follow-up correction, `0012_fix_withdrawal_reserved_balance.sql`.
+
+**Withdrawals** route every approval through the generic
+`approval_requests`/`approval_decisions` pair rather than a hardcoded
+two-person check, so the number of required approvals is a per-group
+`withdrawal_policies.required_approvals` setting. The lifecycle is
+`submitted → under_review → awaiting_payment → paid_externally`, or
+`→ rejected`/`→ cancelled` along the way, or `→ reversed` from
+`paid_externally`. Approval and payment are deliberately two separate
+RPCs (`decide_withdrawal_request()` vs. `confirm_withdrawal_payment()`)
+— reaching the required approval count never itself marks a withdrawal
+paid. The available-balance calculation
+(`computeAvailableWithdrawalAmount`/`computeWithdrawalEligibility` in
+`src/lib/withdrawals.ts`, mirrored server-side in both `request_withdrawal()`
+and `decide_withdrawal_request()`) is `verified contributions −
+outstanding loan principal − amounts reserved by open requests or
+already paid out`, floored at zero — see
+[security-boundaries.md](./security-boundaries.md#withdrawal-ledger-integrity-phase-6)
+for the real bug this had at first (paid withdrawals didn't reduce the
+balance) and how it was found and fixed.
+
+**Governance** proposals lock their material terms once voting opens —
+there's no update RPC for title/dates/thresholds, only
+`cancel_governance_proposal()`, itself restricted once voting has
+started. Voter eligibility (`src/lib/governance.ts`'s
+`isEligibleVoter`, mirrored in `cast_vote()`) is a join-date-before-
+voting-opened comparison, the same point-in-time approach Phase 3/4
+already established for contribution/loan eligibility, rather than a
+physical snapshot table. A proposal's result (`computeProposalResult`)
+is never stored — always derived live from vote counts, quorum and
+threshold, the same "don't persist a status that could go stale"
+approach as `computeLoanStatus`. Live vote visibility is restricted
+while voting is open (own vote only, unless owner/administrator/
+auditor) and opens to everyone once voting closes — see
+security-boundaries.md for the real UI bug this surfaced (a plain
+member's "current tally" view was actually just their own vote,
+presented as if complete) and its fix.
+
+A group's withdrawal policy can set a `large_withdrawal_threshold_minor_units`
+above which a request must link to a governance proposal that has
+actually passed before an officer can approve it — enforced inside
+`decide_withdrawal_request()` via `compute_proposal_passed()`, a
+`SECURITY DEFINER` SQL mirror of `computeProposalResult` (SQL can't
+call TypeScript), narrowly scoped so this one server-side check isn't
+itself blocked by the votes-visibility restriction.
+
+**UI**: a Withdrawals page (officer queue + member request/lifecycle,
+mirroring the Loans page's tab shape), an Approvals page (cross-cutting
+queue of requests awaiting the signed-in officer's decision — for now
+populated only by `subject_type = 'withdrawal_request'`), a Governance
+page (proposal creation, voting, results), and the group Overview page
+extended with Withdrawals/Governance stat groups for both the officer
+and member dashboards — all sourced from `src/lib/data/withdrawal-summary.ts`
+and `src/lib/data/governance-summary.ts`, following Phase 5's
+shared-loader principle so a number can never disagree between where
+it's shown twice.
+
 ## Supabase-ready architecture (still works with zero credentials)
 
 Even though a real Supabase project is now connected for Phase 2, every

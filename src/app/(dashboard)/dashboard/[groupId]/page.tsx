@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Users, HandCoins, Landmark, AlertTriangle, Wallet, History } from "lucide-react";
+import { Users, HandCoins, Landmark, AlertTriangle, Wallet, History, Banknote, Vote } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -19,6 +19,8 @@ import {
   loadMyRecords,
 } from "@/lib/data/contribution-summary";
 import { loadActiveLoanProduct, loadGroupLoanSummary, loadMemberLoanEligibility } from "@/lib/data/loan-summary";
+import { loadGroupWithdrawalSummary, loadMemberWithdrawalAvailability } from "@/lib/data/withdrawal-summary";
+import { loadGroupProposalsWithResults } from "@/lib/data/governance-summary";
 import { sumVerifiedAmount } from "@/lib/contributions";
 import { formatMoney } from "@/lib/money";
 
@@ -31,12 +33,19 @@ async function loadGroupCurrency(groupId: string): Promise<string> {
 }
 
 async function AdminDashboard({ groupId, today }: { groupId: string; today: string }) {
-  const [members, contributionSummary, loanSummary, currencyCode] = await Promise.all([
+  const [members, contributionSummary, loanSummary, currencyCode, withdrawalSummary, proposals] = await Promise.all([
     loadActiveMembers(groupId),
     loadGroupContributionSummary(groupId, today),
     loadGroupLoanSummary(groupId, today),
     loadGroupCurrency(groupId),
+    loadGroupWithdrawalSummary(groupId),
+    loadGroupProposalsWithResults(groupId, null, new Date().toISOString()),
   ]);
+
+  const openProposals = proposals.filter((p) => p.status === "open" && p.result === "voting");
+  const nextDeadline = openProposals
+    .slice()
+    .sort((a, b) => new Date(a.voting_closes_at).getTime() - new Date(b.voting_closes_at).getTime())[0];
 
   const contributionCurrency = contributionSummary.plan?.currencyCode ?? currencyCode;
 
@@ -114,17 +123,67 @@ async function AdminDashboard({ groupId, today }: { groupId: string; today: stri
           </div>
         )}
       </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Withdrawals</h2>
+        {!withdrawalSummary.policy ? (
+          <EmptyState
+            icon={Banknote}
+            title="No withdrawal policy yet"
+            description="Configure one in Settings to start accepting withdrawal requests for this group."
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Awaiting review" value={String(withdrawalSummary.awaitingReviewCount)} icon={Banknote} />
+            <StatCard label="Awaiting payment" value={String(withdrawalSummary.awaitingPaymentCount)} icon={Banknote} />
+            <StatCard
+              label="Total pending"
+              value={formatMoney(withdrawalSummary.totalPendingMinorUnits, withdrawalSummary.currencyCode)}
+              icon={Banknote}
+            />
+            <StatCard
+              label="Total paid"
+              value={formatMoney(withdrawalSummary.totalPaidMinorUnits, withdrawalSummary.currencyCode)}
+              icon={Banknote}
+            />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Governance</h2>
+        {proposals.length === 0 ? (
+          <EmptyState
+            icon={Vote}
+            title="No proposals yet"
+            description="Proposals raised by members for the group to vote on will appear here."
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <StatCard label="Open proposals" value={String(openProposals.length)} icon={Vote} />
+            <StatCard
+              label="Next voting deadline"
+              value={nextDeadline ? new Date(nextDeadline.voting_closes_at).toLocaleDateString("en-GB") : "None"}
+              icon={Vote}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 async function MemberDashboard({ groupId, userId, today }: { groupId: string; userId: string; today: string }) {
-  const [myRecords, missedContributions, product] = await Promise.all([
+  const [myRecords, missedContributions, product, withdrawalAvailability, proposals] = await Promise.all([
     loadMyRecords(groupId, userId),
     loadMemberMissedContributions(groupId, userId, today),
     loadActiveLoanProduct(groupId),
+    loadMemberWithdrawalAvailability(groupId, userId, today),
+    loadGroupProposalsWithResults(groupId, userId, new Date().toISOString()),
   ]);
   const { eligibility } = await loadMemberLoanEligibility(groupId, userId, product, today);
+
+  const votableProposals = proposals.filter((p) => p.canVote);
 
   const verifiedTotal = sumVerifiedAmount(myRecords);
   const verifiedCount = myRecords.filter((r) => r.status === "verified" || r.status === "reconciled").length;
@@ -138,9 +197,41 @@ async function MemberDashboard({ groupId, userId, today }: { groupId: string; us
 
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Current balance" value={formatMoney(verifiedTotal, currencyCode)} icon={Wallet} />
         <StatCard label="Total contributions" value={String(verifiedCount)} icon={History} />
+        <StatCard
+          label="Available to withdraw"
+          value={formatMoney(withdrawalAvailability.eligibility.availableToWithdraw, currencyCode)}
+          icon={Banknote}
+        />
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Governance</h2>
+        {proposals.length === 0 ? (
+          <EmptyState
+            icon={Vote}
+            title="No proposals yet"
+            description="Proposals raised for the group to vote on will appear here."
+          />
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-foreground">
+                {votableProposals.length > 0
+                  ? `${votableProposals.length} proposal(s) awaiting your vote.`
+                  : "No proposals currently awaiting your vote."}
+              </p>
+              <Link
+                href={`/dashboard/${groupId}/governance`}
+                className="mt-2 inline-block text-sm font-medium text-primary hover:underline"
+              >
+                View governance →
+              </Link>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div>

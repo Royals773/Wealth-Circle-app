@@ -46,17 +46,22 @@ Postgres roles the browser and server clients use — the browser client
 only ever holds the public anon key (see below), so even a compromised
 client cannot read another group's data.
 
-## Two-person approval
+## Multi-person approval
 
-- `withdrawal_requests` has `approved_by_1`/`approved_at_1` and
-  `approved_by_2`/`approved_at_2` columns, plus a check constraint that the
-  two approvers must be different people
-  (`withdrawal_dual_approval_distinct`).
-- The generic `approval_requests` / `approval_decisions` pair extends the
-  same pattern to other sensitive actions (loan write-offs, governance
-  decisions, financial corrections): one `approval_decisions` row per
+- The generic `approval_requests` / `approval_decisions` pair (Phase 1)
+  is the one real mechanism for this: one `approval_decisions` row per
   approver, unique per `(approval_request_id, approver_id)`, so the same
-  person cannot register two decisions on one request.
+  person can never register two of the required decisions on one
+  request. `approval_requests.required_approvals` makes the count
+  configurable per subject, rather than hardcoded.
+- **Withdrawals (Phase 6)** are the first real consumer.
+  `withdrawal_requests` originally had hardcoded `approved_by_1`/
+  `approved_by_2` columns sketched in Phase 1 — never wired to any RPC,
+  and removed in `0011_phase6_withdrawals_governance.sql` in favour of
+  routing every decision through `approval_requests`/`approval_decisions`,
+  with the required count coming from the group's own
+  `withdrawal_policies.required_approvals`. See "Withdrawal ledger
+  integrity" below.
 - `src/lib/permissions.ts` exposes `canApproveOwnRequest()`, which always
   returns `false` — documented as a reminder that self-approval must never
   be allowed at any layer that consumes this module.
@@ -367,6 +372,123 @@ twelve `SECURITY INVOKER` RPCs, following the same pattern as Phase 2/3:
   (`principal_portion_minor_units`/`interest_portion_minor_units`), not
   recomputed later, so it stays consistent even if a loan's terms were
   somehow queried again after the fact.
+
+## Withdrawal ledger integrity (Phase 6)
+
+`supabase/migrations/0011_phase6_withdrawals_governance.sql` (and its
+follow-up correction, `0012_fix_withdrawal_reserved_balance.sql`) build
+the write path on `withdrawal_requests`/`withdrawal_policies`, following
+the same `SECURITY INVOKER` + explicit role check + audit log pattern
+as every migration since `0002_phase2_auth_functions.sql`.
+
+- **Members can request their own withdrawal; officers decide, never
+  their own.** `withdrawal_requests_insert_own` requires `requested_by =
+  auth.uid()`. The update policy is split exactly like `loan_applications`'
+  self-approval fix in Phase 4: `withdrawal_requests_review_reviewers`
+  requires `requested_by <> auth.uid()` in both `USING` and `WITH CHECK`,
+  and `decide_withdrawal_request()`/`confirm_withdrawal_payment()` repeat
+  the same check at the RPC layer as defense-in-depth.
+- **Who counts as a "reviewer" is configurable per group, not
+  hardcoded.** `is_withdrawal_reviewer(group_id)` (SECURITY DEFINER,
+  same pattern as `has_group_role`/`is_group_manager`) checks the
+  current user's role against that group's own
+  `withdrawal_policies.reviewer_roles` array — used consistently across
+  `withdrawal_requests`, `approval_requests`, and `approval_decisions`
+  RLS policies, so a role that isn't a configured reviewer (even
+  treasurer, by default included but removable) genuinely cannot decide
+  or confirm payment, at the database level, not just hidden in the UI.
+- **The available balance is always recalculated server-side, twice.**
+  `request_withdrawal()` computes it fresh from verified ledger data at
+  submission time; `decide_withdrawal_request()` recomputes it again
+  once the required number of approvals is reached, in case the
+  member's position changed in between (e.g. a new loan taken out) —
+  never trusting the figure that was true when the request was first
+  submitted.
+- **The safest-default loan-protection rule is structural, not
+  optional.** Available = verified contributions − outstanding loan
+  principal − amounts already reserved by open requests or already
+  paid out, floored at zero — a withdrawal can never leave a member's
+  net verified contributions below their outstanding loan principal.
+  **Real bug, found and fixed**: the initial `0011` implementation only
+  subtracted *open* requests (submitted/under_review/approved/
+  awaiting_payment) — once a request reached `paid_externally` it
+  dropped out of that sum entirely, so a member's displayed and
+  server-enforced available balance never decreased after being paid,
+  meaning the same money could be requested again. Fixed in `0012` by
+  including `paid_externally` in the sum; only a genuine reversal (which
+  flips status to `reversed`) releases the hold. Found during the Phase
+  6 manual walkthrough, not by the automated suites that ran first —
+  covered by new live security tests afterward.
+- **Approval must not automatically mean payment.** Reaching the
+  required number of approvals moves a request to `awaiting_payment`,
+  never directly to `paid_externally` — only `confirm_withdrawal_payment()`
+  can make that transition, and it requires the paid amount to match
+  the approved amount exactly, plus a bank reference, and enforces the
+  policy's notice period.
+- **Paid records are locked the same way verified contributions and
+  repayments are.** `protect_paid_withdrawal_record()`, a `before
+  update` trigger, rejects direct edits to a `paid_externally` record's
+  financial fields, with the same single exception (a transition to
+  `reversed`) as the Phase 3/4 triggers. `reverse_withdrawal_payment()`
+  requires a reason and never edits the original record's amount.
+- **One open request per member per group.** A partial unique index
+  (`withdrawal_requests_one_open_per_member`, on
+  `submitted`/`under_review`/`approved`/`awaiting_payment`) is both a
+  sensible business rule and the concrete fix for duplicate-submission-
+  on-retry — the same pattern as `loan_applications_one_open_per_member`
+  in Phase 4.
+
+## Governance integrity (Phase 6)
+
+- **One vote per eligible member is a database constraint, not just
+  application logic.** The `unique (proposal_id, voter_id)` constraint
+  on `votes` (Phase 1, unchanged) is what actually prevents a double
+  vote; `cast_vote()`'s own check is a friendlier error on top of it.
+- **Voter eligibility is a join-date comparison, computed server-side.**
+  A member can vote only if their `group_memberships.joined_at <=
+  proposal.voting_opens_at` — the same point-in-time approach already
+  used for contribution/loan eligibility, rather than a separate
+  physical snapshot table.
+- **Material terms are locked once voting opens.** There is deliberately
+  no `update_proposal()` RPC for title, description, dates, or
+  thresholds — only `cancel_governance_proposal()`, and even that is
+  restricted once voting has started: the proposer can only withdraw
+  their own proposal *before* voting opens
+  (`governance_proposals_cancel_own_before_voting`); an owner/
+  administrator can cancel at any time
+  (`governance_proposals_cancel_managers`).
+- **Live vote visibility is restricted while voting is open, not just
+  vague "results appear later."** The original Phase 1 `votes` SELECT
+  policy let any group member read every other member's individual
+  vote at any time — a real gap, never exercised until this phase.
+  Replaced with two policies: a member always sees their own vote (and
+  owners/administrators/auditors always see everything, for audit
+  purposes); everyone sees the full result only once
+  `now() >= voting_closes_at`. Multiple permissive `SELECT` policies on
+  the same table are combined with `OR` by Postgres, so this reads as
+  "own vote, or privileged role, or the window has closed."
+  **Real UI bug, found and fixed**: the Governance page originally let
+  any signed-in member click through to a "current tally" view — since
+  the underlying `votes` query was already correctly RLS-restricted to
+  their own vote while open, what displayed was their own single vote
+  dressed up with turnout percentages and a for/against/abstain
+  breakdown, looking like the complete result when it wasn't. Fixed by
+  computing a `canSeeFullTally` flag server-side (mirroring the RLS
+  policy: manager or auditor) and only rendering a tally at all when
+  that's true or voting has actually closed — a plain member now sees
+  an explicit "results stay private until voting closes" message
+  instead of misleading partial data.
+- **A large withdrawal can require a passed vote first, enforced
+  server-side.** `withdrawal_policies.large_withdrawal_threshold_minor_units`,
+  when set, requires `request_withdrawal()` to be given a
+  `p_linked_proposal_id`; `decide_withdrawal_request()` then calls
+  `compute_proposal_passed()` (a SQL-level mirror of
+  `src/lib/governance.ts`'s `computeProposalResult` — SQL can't call
+  TypeScript) and refuses to approve until it returns true. This
+  function is `SECURITY DEFINER` specifically so the approval-time
+  check isn't itself blocked by the votes-visibility restriction above
+  — the only privileged read in this phase, narrowly scoped to a single
+  boolean.
 
 ## Trusted session verification
 
