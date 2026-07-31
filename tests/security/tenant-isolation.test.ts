@@ -184,15 +184,22 @@ describe.skipIf(!isConfigured)("tenant isolation and invitation lifecycle (live)
       .eq("user_id", userAId)
       .single();
 
-    const { data: updated } = await clientA
+    const { data: updated, error } = await clientA
       .from("group_memberships")
       .update({ role: "owner" })
       .eq("id", ownRow!.id)
       .select();
 
-    // RLS excludes the row entirely (user_id <> auth.uid() fails), so the
-    // update matches zero rows rather than erroring.
-    expect(updated).toEqual([]);
+    // Since Phase 7 (0013_phase7_member_management.sql), a user's own
+    // active row IS visible under the "leave own membership" policy's
+    // USING clause — that's what lets someone leave a group themselves.
+    // But its WITH CHECK only permits transitioning to status =
+    // 'removed', so an attempt to change role instead (leaving status
+    // untouched) fails WITH CHECK and errors, rather than silently
+    // matching zero rows the way it did under the old, narrower
+    // Phase 1 policy.
+    expect(updated).toBeNull();
+    expect(error).not.toBeNull();
   });
 
   let firstInviteToken: string;

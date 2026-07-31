@@ -288,34 +288,89 @@ initial schema. Building a fourth, unified version routed through it
 would duplicate functionality the app already
 delivers correctly, so no such workflow was built, and none is planned.
 
-## Phase 7 — Member and role management
+## Phase 7 — Member and role management *(complete)*
 
 Closes the gap noted back in Phase 2: RLS-level protections against
 self-promotion and unauthorised role changes have existed since Phase 2,
-but there has never been a screen to actually manage members or roles.
-Planned scope:
+but there had never been a screen — or most of the RPCs — to actually
+manage members or roles. A real, unfixed Phase 1 RLS gap was fixed here,
+not just extended: the original `group_memberships_update_managers`
+policy checked "is the actor a manager, and is the target not
+themselves" for `USING`, but never checked the target row's *current*
+role — so an administrator could in principle have demoted, suspended,
+or removed an existing owner. No RPC ever exercised this (none existed
+before this phase), but the policy itself was live and wrong. It's
+replaced by two narrower policies (the same split-policy pattern used
+for the Phase 4 loan self-approval fix): owner rows are now structurally
+outside the reach of the general manage-members policy in both
+directions, so this class of bug can't recur.
 
-- Viewing and searching group members
-- Promoting and demoting members between authorised roles
-- Suspending, reactivating, and removing members
-- Safe ownership transfer (a group must always have exactly one owner)
-- Structural prevention of removing or demoting the group's final owner
-- Structural prevention of unauthorised or self-serving role changes —
-  the same self-approval-prevention pattern (split RLS policies +
-  RPC-level check) established for loan applications (Phase 4) and
-  withdrawal decisions (Phase 6)
-- Correct handling of a member with active loans, pending withdrawal
-  requests, or other outstanding financial obligations at the point
-  they're suspended or removed — defined explicitly before
-  implementation, not left as an edge case discovered live
-- Immutable audit records for every membership and role change
-- RLS enforcement and cross-group isolation, verified with live security
-  tests the same way every other phase has been
+- **Member directory** (`supabase/migrations/
+  0013_phase7_member_management.sql`): search, status tabs (Active /
+  Invited / Suspended / Removed), mobile card layout below the usual
+  breakpoint. Officers additionally see financial-obligation indicators
+  (active loan, pending loan application, unverified repayment, pending
+  withdrawal) and the most recent role/status-change event per member,
+  sourced from `audit_logs`. Plain members keep the existing,
+  unrestricted basic roster (name, role, status, joined date) —
+  unchanged privacy model from Phase 1/2.
+- **Role changes**: `change_member_role()` — manager-only, mandatory
+  reason, rejects self-targeting, rejects assigning or changing away
+  from `owner` (ownership only ever moves via the transfer workflow
+  below), server-side recheck of current role/status on every call.
+- **Suspend / reactivate**: group-scoped only. Suspension is enforced
+  "for free" everywhere in the app — `is_group_member()`/
+  `has_group_role()`/`is_group_manager()` (the Phase 1 helpers every RLS
+  policy in the schema already calls) all filter on `status = 'active'`,
+  so a suspended member loses both write *and read* access the instant
+  their status changes, with no changes needed to any other table's RLS.
+  Officers retain full visibility into a suspended member's history at
+  all times.
+- **Removal**: soft (`status = 'removed'`), blocked by unresolved
+  obligations — an active loan, a pending loan application, an
+  unverified repayment, a pending/approved withdrawal, or a pending
+  ownership transfer involving them — via a shared
+  `member_removal_blockers()` function that explains exactly what needs
+  resolving first. An open governance proposal they created is shown as
+  informational only, never a hard block, since a proposal doesn't
+  depend on its proposer remaining a member.
+- **Ownership transfer**: two-step (`initiate_ownership_transfer()` →
+  target `accept_ownership_transfer()`/`decline_ownership_transfer()`,
+  or the current owner `cancel_ownership_transfer()`), one pending
+  transfer per group, 7-day expiry, no email notification (in-app only,
+  per the phase boundary). The outgoing owner's role becomes
+  `administrator` in the same transaction as the incoming owner's
+  promotion — full continued authority, just no longer sole final
+  authority.
+- **Last-owner protection**: enforced structurally via
+  `active_owner_count()`, used identically inside both an RLS
+  `WITH CHECK` clause and RPC bodies — never counted in the browser. A
+  sole owner cannot leave, and (as a consequence of the RLS fix above)
+  cannot be demoted, suspended, or removed by anyone else either; the
+  only way to change their status is to transfer ownership first.
+- **Self-service leave** (Settings page): blocked by the same
+  unresolved-obligations check as removal, and by last-owner protection.
+- **Immutable audit records** for every role change, suspension,
+  reactivation, removal, departure, and ownership-transfer event.
 
-Not yet scoped in detail — implementation planning (including exact
-RPC surface, migration needs if any, and how outstanding financial
-obligations are handled) happens at the start of this phase, following
-the same research → plan → implement protocol as every prior phase.
+A guided walkthrough surfaced one real bug, fixed and covered by a new
+live security test: `change_member_role()`, `suspend_member()`, and
+`remove_member()` each looked up the target row with
+`select ... for update` before deciding what to do. Under Postgres RLS,
+`SELECT ... FOR UPDATE` must satisfy not only the `SELECT` policy but
+also the `USING` clause of any applicable `UPDATE` policy — and the only
+`UPDATE` policy covering these rows deliberately excludes `role =
+'owner'`. So locking a target row that currently held `owner` silently
+returned no row, and the code fell through to a generic "Member not
+found in this group" instead of the intended "...owner cannot be
+suspended/removed..." / "...ownership transfer workflow..." message.
+The action was still correctly blocked either way (RLS did its job) —
+this only fixed which error message the caller sees. Fixed in
+`supabase/migrations/
+0014_fix_member_management_owner_lock_visibility.sql` by dropping
+`for update` from those three lookups (row locking isn't load-bearing
+there; the later `update` statement still serializes concurrent writes
+to the same row on its own).
 
 ## Phase 8 — Reports, notifications and audit tools
 

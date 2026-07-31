@@ -36,8 +36,9 @@ TypeScript mirror: [`src/lib/types/database.ts`](../src/lib/types/database.ts).
 |---|---|
 | `profiles` | One row per Supabase Auth user. Display data only — never online-banking credentials. |
 | `groups` | A private workspace: name, slug, country, currency, contribution settings, financial year, rules. |
-| `group_memberships` | A user's role in one group (`owner`, `administrator`, `treasurer`, `loan_officer`, `auditor`, `member`) and status. Unique per `(group_id, user_id)`. |
+| `group_memberships` | A user's role in one group (`owner`, `administrator`, `treasurer`, `loan_officer`, `auditor`, `member`) and status (`active`/`suspended`/`removed` — since Phase 7, `suspended`/`removed` are fully load-bearing: every RLS-gated table's access checks filter on `status = 'active'`, so a non-active status revokes both read and write access everywhere, not just this table). Unique per `(group_id, user_id)`. |
 | `group_invitations` | Pending/accepted/revoked/expired invitations, addressed by email, carrying a role and an expiring token. Only a SHA-256 hash of the token is stored (`token_hash`) — the raw token is generated and returned exactly once, by `create_invitation()`, and is never persisted. |
+| `ownership_transfers` *(Phase 7)* | A group's owner handing sole ownership to another active member — pending/accepted/declined/cancelled/expired, 7-day expiry (matching invitations). A unique partial index (`where status = 'pending'`) limits each group to one pending transfer at a time. |
 | `contribution_plans` | A group's contribution scheme — fixed amount or flexible, frequency, effective dates. |
 | `contribution_records` | Individual member contributions, with the full status lifecycle and optional link back to a `contribution_plan`. |
 | `withdrawal_requests` | Requests to withdraw from the group's own bank account; supports two-approver sign-off (`approved_by_1/2`). |
@@ -91,6 +92,25 @@ reasoning behind each.
 | `revoke_invitation` | invoker | Manager-only, and only while the invitation is still `pending`. |
 | `get_invitation_preview` | **definer** | Public, token-gated read (group name, role, invited email, status) so an unauthenticated visitor can see what they're being invited to before creating an account. |
 | `accept_invitation` | **definer** | The only way a user can add themselves to a group. Validates the token, status, expiry, and that the caller's verified email matches the invitation, then inserts the membership with the role taken from the invitation itself. |
+
+## Phase 7 database functions
+
+Added in `0013_phase7_member_management.sql`, with an error-message-only
+fix in `0014_fix_member_management_owner_lock_visibility.sql`. See
+[security-boundaries.md](./security-boundaries.md#member-and-role-management-integrity-phase-7)
+for the RLS gap this phase closed.
+
+| Function | Security | Purpose |
+|---|---|---|
+| `active_owner_count` | invoker (stable helper) | Counts a group's active `owner` rows. Used identically inside RLS `WITH CHECK` and inside RPCs — never counted client-side. |
+| `member_removal_blockers` | **definer** | Manager-or-self only. Returns a human-readable list of what's blocking a member's removal/departure (active loan, pending loan application, unverified repayment, pending/approved withdrawal, pending ownership transfer). Shared by `remove_member` and `leave_group`. |
+| `change_member_role` | invoker | Manager-only, mandatory reason, rejects self-targeting and any owner-role involvement (assigning or changing away from `owner`). |
+| `suspend_member` / `reactivate_member` | invoker | Manager-only; suspend rejects owner targets and mandatory reason; reactivate requires the target currently be suspended. |
+| `remove_member` | invoker | Manager-only, mandatory reason, rejects owner targets and self-targeting, blocked by `member_removal_blockers`. |
+| `leave_group` | invoker | Self-service. Blocked by `member_removal_blockers`, and by `active_owner_count` if the caller is the group's last active owner. |
+| `initiate_ownership_transfer` | invoker | Owner-only. Target must be an active, non-owner member; one pending transfer per group (unique index). |
+| `accept_ownership_transfer` | **definer** | Recipient-only. In one transaction: promotes the caller to `owner`, demotes the outgoing owner to `administrator`, marks the transfer accepted. Definer because ordinary RLS never allows self-promotion. |
+| `decline_ownership_transfer` / `cancel_ownership_transfer` | invoker | Recipient declines their own pending transfer; any current owner of the group can cancel it. |
 
 ## Regenerating TypeScript types from a live project
 

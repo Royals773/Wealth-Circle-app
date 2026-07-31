@@ -9,6 +9,7 @@ import {
 } from "@/components/dashboard/contribution-plan-form";
 import { LoanPolicyForm, type LoanPolicySummary } from "@/components/dashboard/loan-policy-form";
 import { WithdrawalPolicyForm } from "@/components/dashboard/withdrawal-policy-form";
+import { LeaveGroupSection } from "@/components/dashboard/leave-group-section";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
@@ -110,6 +111,17 @@ async function loadActiveLoanPolicy(groupId: string): Promise<LoanPolicySummary 
   };
 }
 
+async function countActiveOwners(groupId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("group_memberships")
+    .select("user_id", { count: "exact", head: true })
+    .eq("group_id", groupId)
+    .eq("role", "owner")
+    .eq("status", "active");
+  return count ?? 0;
+}
+
 export default async function SettingsPage({
   params,
 }: {
@@ -125,11 +137,13 @@ export default async function SettingsPage({
   const canManageWithdrawals = currentRole !== null && roleHasCapability(currentRole, "manage_withdrawal_policy");
   // Loaded regardless of role: this is what everyone sees displayed below,
   // not just what the edit form (owner/administrator/treasurer only) uses.
-  const [plan, loanPolicy, withdrawalPolicy] = await Promise.all([
+  const [plan, loanPolicy, withdrawalPolicy, activeOwnerCount] = await Promise.all([
     loadActiveContributionPlan(groupId),
     loadActiveLoanPolicy(groupId),
     isSupabaseConfigured ? loadWithdrawalPolicy(groupId) : Promise.resolve(null),
+    currentRole === "owner" ? countActiveOwners(groupId) : Promise.resolve(null),
   ]);
+  const isLastOwner = currentRole === "owner" && (activeOwnerCount ?? 0) <= 1;
 
   return (
     <div>
@@ -365,6 +379,10 @@ export default async function SettingsPage({
               </p>
             </CardContent>
           </Card>
+
+          {currentRole !== null ? (
+            <LeaveGroupSection groupId={groupId} isLastOwner={isLastOwner} />
+          ) : null}
         </div>
       )}
     </div>

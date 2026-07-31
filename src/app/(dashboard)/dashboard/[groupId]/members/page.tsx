@@ -5,58 +5,20 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InviteMemberDialog } from "@/components/dashboard/invite-member-dialog";
-import {
-  PendingInvitationsList,
-  type PendingInvitation,
-} from "@/components/dashboard/pending-invitations-list";
+import { MemberDirectoryTable } from "@/components/dashboard/member-directory-table";
+import { OwnershipTransferCard } from "@/components/dashboard/ownership-transfer-card";
+import type { PendingInvitation } from "@/components/dashboard/pending-invitations-list";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
+import {
+  loadBasicRoster,
+  loadMemberDirectory,
+  loadPendingOwnershipTransfer,
+} from "@/lib/data/member-directory";
 import { ROLE_LABELS, roleHasCapability } from "@/lib/permissions";
-import type { GroupRole, MembershipStatus } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "Members" };
-
-interface MemberRow {
-  id: string;
-  fullName: string;
-  email: string;
-  role: GroupRole;
-  status: MembershipStatus;
-  joinedAt: string;
-}
-
-async function loadMembers(groupId: string): Promise<MemberRow[]> {
-  if (!isSupabaseConfigured) return [];
-
-  const supabase = await createClient();
-  const { data: memberships } = await supabase
-    .from("group_memberships")
-    .select("id, user_id, role, status, joined_at")
-    .eq("group_id", groupId)
-    .order("joined_at", { ascending: true });
-
-  if (!memberships || memberships.length === 0) return [];
-
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, full_name, email")
-    .in(
-      "id",
-      memberships.map((m) => m.user_id),
-    );
-
-  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
-
-  return memberships.map((membership) => ({
-    id: membership.id,
-    fullName: profileById.get(membership.user_id)?.full_name ?? "Unknown member",
-    email: profileById.get(membership.user_id)?.email ?? "",
-    role: membership.role,
-    status: membership.status,
-    joinedAt: membership.joined_at,
-  }));
-}
 
 async function loadPendingInvitations(groupId: string): Promise<PendingInvitation[]> {
   if (!isSupabaseConfigured) return [];
@@ -79,20 +41,112 @@ async function loadPendingInvitations(groupId: string): Promise<PendingInvitatio
 
 export default async function MembersPage({ params }: { params: Promise<{ groupId: string }> }) {
   const { groupId } = await params;
-  const [members, currentRole] = await Promise.all([
-    loadMembers(groupId),
-    getCurrentMembershipRole(groupId),
-  ]);
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div>
+        <PageHeader title="Members" description="Everyone who belongs to this group." />
+        <EmptyState
+          icon={Users}
+          title="No members yet"
+          description="Members you invite during setup, or afterward, will appear here once they accept their invitation."
+        />
+      </div>
+    );
+  }
+
+  const supabase = await createClient();
+  const [
+    {
+      data: { user },
+    },
+    currentRole,
+  ] = await Promise.all([supabase.auth.getUser(), getCurrentMembershipRole(groupId)]);
+  const currentUserId = user?.id ?? "";
   const canManageMembers = currentRole !== null && roleHasCapability(currentRole, "manage_members");
-  const pendingInvitations = canManageMembers ? await loadPendingInvitations(groupId) : [];
+  const isOwner = currentRole === "owner";
+
+  if (!canManageMembers) {
+    const roster = await loadBasicRoster(groupId);
+
+    return (
+      <div>
+        <PageHeader title="Members" description="Everyone who belongs to this group, and the role they hold here." />
+
+        {roster.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="No members yet"
+            description="Members will appear here once they accept an invitation."
+          />
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Joined</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {roster.map((member) => (
+                  <TableRow key={member.userId}>
+                    <TableCell className="font-medium text-foreground">
+                      {member.fullName}
+                      {member.userId === currentUserId ? (
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">(you)</span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{ROLE_LABELS[member.role]}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={member.status === "active" ? "secondary" : "outline"}>
+                        {member.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(member.joinedAt).toLocaleDateString("en-GB")}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const [members, pendingInvitations, pendingTransfer] = await Promise.all([
+    loadMemberDirectory(groupId),
+    loadPendingInvitations(groupId),
+    loadPendingOwnershipTransfer(groupId),
+  ]);
+
+  const eligibleTransferTargets = members
+    .filter((m) => m.status === "active" && m.role !== "owner" && m.userId !== currentUserId)
+    .map((m) => ({ userId: m.userId, fullName: m.fullName }));
 
   return (
     <div>
       <PageHeader
         title="Members"
-        description="Everyone who belongs to this group, and the role they hold here."
-        action={canManageMembers ? <InviteMemberDialog groupId={groupId} /> : undefined}
+        description="Manage roles, suspensions, removals, and ownership for this group."
+        action={<InviteMemberDialog groupId={groupId} />}
       />
+
+      <div className="mb-6">
+        <OwnershipTransferCard
+          groupId={groupId}
+          currentUserId={currentUserId}
+          isOwner={isOwner}
+          pendingTransfer={pendingTransfer}
+          eligibleMembers={eligibleTransferTargets}
+        />
+      </div>
 
       {members.length === 0 ? (
         <EmptyState
@@ -101,43 +155,13 @@ export default async function MembersPage({ params }: { params: Promise<{ groupI
           description="Members you invite during setup, or afterward, will appear here once they accept their invitation."
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Joined</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.map((member) => (
-                <TableRow key={member.id}>
-                  <TableCell className="font-medium text-foreground">{member.fullName}</TableCell>
-                  <TableCell className="text-muted-foreground">{member.email}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{ROLE_LABELS[member.role]}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={member.status === "active" ? "secondary" : "outline"}>
-                      {member.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(member.joinedAt).toLocaleDateString("en-GB")}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <MemberDirectoryTable
+          groupId={groupId}
+          members={members}
+          pendingInvitations={pendingInvitations}
+          currentUserId={currentUserId}
+        />
       )}
-
-      {canManageMembers ? (
-        <PendingInvitationsList groupId={groupId} invitations={pendingInvitations} />
-      ) : null}
     </div>
   );
 }

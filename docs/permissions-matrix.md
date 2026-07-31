@@ -60,7 +60,23 @@ Notes:
   standing reminder to any code that consumes it.
 - As of Phase 2, "members cannot change their own role" is enforced at
   the database level, not just by omission from the UI: the
-  `group_memberships` update policy requires `user_id <> auth.uid()`, so
-  even a manager cannot alter their own membership row (role or status)
-  through the API. See
+  `group_memberships` manage-members policy requires `user_id <>
+  auth.uid()`, so even a manager cannot alter their own role or status
+  through that path. See
   [security-boundaries.md](./security-boundaries.md#phase-2-rls-fixes-found-during-pre-deployment-review).
+  As of Phase 7, there is exactly one exception: a member may transition
+  their *own* row to `removed` (leaving the group) via a separate,
+  narrower policy — but that policy's `WITH CHECK` only ever permits the
+  `removed` transition, never a role change or any other status, and is
+  itself blocked if the member is the group's last active owner.
+- **"Manage members" (Owner/Administrator only) covers**: changing
+  another member's role, suspending, reactivating, and removing them —
+  but never a row currently holding `owner`, and never assigning
+  `owner` directly. The only way a group's ownership changes is the
+  two-step transfer workflow (current owner initiates, named recipient
+  accepts or declines, either party's current owner can cancel while
+  pending) — see
+  [security-boundaries.md](./security-boundaries.md#member-and-role-management-integrity-phase-7).
+  A group can never be left without an active owner: enforced by
+  `active_owner_count()`, used identically in both RLS and the RPCs, not
+  just counted client-side.

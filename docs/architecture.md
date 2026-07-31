@@ -352,6 +352,56 @@ and `src/lib/data/governance-summary.ts`, following Phase 5's
 shared-loader principle so a number can never disagree between where
 it's shown twice.
 
+## Member and role management (Phase 7)
+
+Adds `supabase/migrations/0013_phase7_member_management.sql` (a new
+`ownership_transfers` table, `active_owner_count()`/
+`member_removal_blockers()` SQL helpers, a replaced pair of
+`group_memberships` RLS policies, and nine new RPCs) plus a follow-up
+error-message fix, `0014_fix_member_management_owner_lock_visibility.sql`
+— see
+[security-boundaries.md](./security-boundaries.md#member-and-role-management-integrity-phase-7)
+for the RLS gap this phase closes and the bug the fix corrects.
+
+Every membership state change (`change_member_role`, `suspend_member`,
+`reactivate_member`, `remove_member`, `leave_group`, and the four
+`*_ownership_transfer` RPCs) is `SECURITY INVOKER` and re-checks role,
+target status, and self-targeting from scratch server-side, except
+`accept_ownership_transfer()` — `SECURITY DEFINER`, following the same
+shape as `accept_invitation()`, since it's the one operation that
+structurally requires promoting the caller and demoting someone else in
+a single transaction. Ownership transfer is deliberately two-step
+(`initiate_ownership_transfer()` by the current owner, then
+`accept_ownership_transfer()`/`decline_ownership_transfer()` by the
+named recipient, or `cancel_ownership_transfer()` by any current owner)
+rather than an instant handoff, with no email notification (in-app UI
+only, per the phase boundary) and a 7-day expiry matching invitations.
+
+`src/lib/data/member-directory.ts` provides two loaders: `loadMemberDirectory()`
+(officer-only — the full roster plus financial-obligation indicators
+computed via six parallel queries, and the most recent role/status
+change per member from `audit_logs`) and `loadBasicRoster()` (what every
+member has always seen since Phase 1/2 — name, role, status, joined
+date, unchanged). The Members page renders one or the other based on
+`roleHasCapability(currentRole, "manage_members")`; no new
+`permissions.ts` capability was needed since this maps directly onto
+the existing `manage_members` capability. Row actions (change role,
+suspend, remove) are bundled into one `DropdownMenu` per row — important
+on the mobile card layout, where there's no room for four separate
+buttons — and gated client-side by the same capability check, with
+every actual mutation re-verified server-side by RLS and the RPC's own
+checks regardless of what the UI shows.
+
+**A significant scope reducer, not implemented as new code**: suspension
+already revokes both read and write access everywhere in the app the
+moment `group_memberships.status` changes, because every RLS-gated
+table's policies ultimately call `is_group_member()`/`has_group_role()`/
+`is_group_manager()`, and all three have filtered on `status = 'active'`
+since Phase 1. This satisfied the spec's "block prohibited actions
+immediately" and "a stale session can't retain permissions" requirements
+with zero additional RLS changes anywhere outside `group_memberships`
+itself.
+
 ## Supabase-ready architecture (still works with zero credentials)
 
 Even though a real Supabase project is now connected for Phase 2, every
@@ -428,25 +478,33 @@ Two layers:
   money conversion helpers, the permissions capability map, the
   open-redirect guard in `src/lib/safe-redirect.ts`, the Phase 3
   contribution period/overdue-status math (`contribution-periods.test.ts`,
-  `contributions.test.ts`), and the Phase 4 loan eligibility/schedule/
-  interest/allocation math (`loan-eligibility.test.ts`, `loans.test.ts`).
-  These run with no Supabase project and are part of the standard build
-  gate.
+  `contributions.test.ts`), the Phase 4 loan eligibility/schedule/
+  interest/allocation math (`loan-eligibility.test.ts`, `loans.test.ts`),
+  and the Phase 6 governance result/eligibility math
+  (`governance.test.ts`). These run with no Supabase project and are
+  part of the standard build gate. 123 currently pass.
 - **Live security tests** (`npm run test:security`, gated behind real
   Supabase credentials — see `tests/security/README.md`): exercise Row
   Level Security and the invitation lifecycle
   (`tenant-isolation.test.ts`), the contribution ledger's RLS/RPCs/
   immutability trigger (`contributions.test.ts`), the loan ledger's
   eligibility enforcement, self-approval prevention, and disbursement/
-  repayment workflow (`loans.test.ts`), and exact calendar-period
-  agreement between the SQL and TypeScript eligibility calculations
-  (`loan-eligibility-calendar.test.ts`) against an actual project using
-  real test users and groups. Skipped automatically (not failed) when
-  Supabase env vars aren't present, so the standard build/test gate never
-  depends on a live project. All 56 currently pass against a live
-  project; running this suite is what caught the two bugs fixed in
-  `0003`/`0004` (see
-  [security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)).
+  repayment workflow (`loans.test.ts`), exact calendar-period agreement
+  between the SQL and TypeScript eligibility calculations
+  (`loan-eligibility-calendar.test.ts`), the Phase 6 withdrawal and
+  governance RLS/RPCs (`withdrawals.test.ts`, `governance.test.ts`), and
+  the Phase 7 member/role-management RLS/RPCs — role changes,
+  self-promotion and owner-protection prevention, suspend/reactivate
+  access loss, removal blockers, last-owner protection, and the full
+  ownership-transfer lifecycle (`membership.test.ts`) — against an
+  actual project using real test users and groups. Skipped automatically
+  (not failed) when Supabase env vars aren't present, so the standard
+  build/test gate never depends on a live project. All 102 currently
+  pass against a live project; running this suite is what caught the two
+  bugs fixed in `0003`/`0004` (see
+  [security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)),
+  the Phase 6 balance and tally-visibility bugs, and the Phase 7
+  owner-lock error-message bug fixed in `0014`.
 
 UI composition is verified by building the app and visually checking key
 pages rather than with brittle snapshot tests at this stage.

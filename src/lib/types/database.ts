@@ -86,6 +86,8 @@ export type VoteChoice = "for" | "against" | "abstain";
 
 export type GovernanceProposalStatus = "open" | "cancelled";
 
+export type OwnershipTransferStatus = "pending" | "accepted" | "declined" | "cancelled" | "expired";
+
 interface Table<Row, Insert, Update> {
   Row: Row;
   Insert: Insert;
@@ -336,6 +338,24 @@ export interface Database {
       >;
       cancel_governance_proposal: Fn<{ p_proposal_id: string; p_reason: string }, undefined>;
       cast_vote: Fn<{ p_proposal_id: string; p_choice: VoteChoice }, undefined>;
+      change_member_role: Fn<
+        { p_group_id: string; p_member_id: string; p_new_role: GroupRole; p_reason: string },
+        undefined
+      >;
+      suspend_member: Fn<{ p_group_id: string; p_member_id: string; p_reason: string }, undefined>;
+      reactivate_member: Fn<
+        { p_group_id: string; p_member_id: string; p_reason: string | null },
+        undefined
+      >;
+      remove_member: Fn<{ p_group_id: string; p_member_id: string; p_reason: string }, undefined>;
+      leave_group: Fn<{ p_group_id: string; p_reason: string | null }, undefined>;
+      initiate_ownership_transfer: Fn<
+        { p_group_id: string; p_to_user_id: string; p_reason: string },
+        { transfer_id: string }[]
+      >;
+      accept_ownership_transfer: Fn<{ p_transfer_id: string }, undefined>;
+      decline_ownership_transfer: Fn<{ p_transfer_id: string; p_reason: string | null }, undefined>;
+      cancel_ownership_transfer: Fn<{ p_transfer_id: string; p_reason: string }, undefined>;
     };
     Tables: {
       profiles: Table<
@@ -443,6 +463,33 @@ export interface Database {
           status?: InvitationStatus;
           accepted_at?: string | null;
           accepted_by?: string | null;
+        }
+      >;
+      ownership_transfers: Table<
+        {
+          id: string;
+          group_id: string;
+          from_user_id: string;
+          to_user_id: string;
+          reason: string;
+          status: OwnershipTransferStatus;
+          created_at: string;
+          expires_at: string;
+          responded_at: string | null;
+          responded_by: string | null;
+          cancelled_reason: string | null;
+        },
+        {
+          group_id: string;
+          from_user_id: string;
+          to_user_id: string;
+          reason: string;
+        },
+        {
+          status?: OwnershipTransferStatus;
+          responded_at?: string | null;
+          responded_by?: string | null;
+          cancelled_reason?: string | null;
         }
       >;
       contribution_plans: Table<

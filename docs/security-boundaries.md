@@ -490,6 +490,94 @@ as every migration since `0002_phase2_auth_functions.sql`.
   — the only privileged read in this phase, narrowly scoped to a single
   boolean.
 
+## Member and role management integrity (Phase 7)
+
+- **A real, unfixed Phase 1 RLS gap, closed by construction.** The
+  original `group_memberships_update_managers` policy checked "is the
+  actor a manager, and is the target not themselves" for `USING`, but
+  never checked the target row's *current* role — so an administrator
+  could in principle have demoted, suspended, or removed an existing
+  owner. No RPC ever exercised this before this phase (none existed),
+  but the policy itself was live and wrong. Replaced with two narrower
+  policies (the same split-policy pattern used for the Phase 4 loan
+  self-approval fix): `group_memberships_manage_non_owners` (a manager
+  may change another member's role/status, but only when the target's
+  *current* role isn't `owner` and the *new* role isn't `owner` either)
+  and `group_memberships_leave_own` (a member may transition their own
+  row to `removed`, blocked by `active_owner_count()` if they're the
+  last active owner). Owner rows are now structurally outside the reach
+  of the general manage-members policy in both directions — the only
+  way to change an owner's status is the ownership-transfer workflow
+  below, never a direct RPC call by anyone else.
+- **Suspension revokes read access, not just write access, and does so
+  for free.** `is_group_member()`, `has_group_role()`, and
+  `is_group_manager()` — the three Phase 1 helper functions every RLS
+  policy in the entire schema already calls — all filter on
+  `status = 'active'`. Widening them to also accept `'suspended'` would
+  have meant touching every table's RLS for one edge case; instead,
+  Phase 7 relies on the fact that they already don't, so a suspended
+  member loses access to their group's data everywhere, the instant
+  their status changes, with zero additional RLS changes anywhere else
+  in the app. No session invalidation is needed — the next request from
+  a suspended member simply fails RLS like any other unauthorised
+  request. Officers retain full visibility into a suspended member's
+  history at all times; suspension never deletes or hides data from
+  people who are still allowed to see it.
+- **Last-owner protection is enforced structurally, not counted in the
+  browser.** `active_owner_count(group_id)` is a single `SECURITY
+  DEFINER` SQL function, used identically inside the
+  `group_memberships_leave_own` policy's `WITH CHECK` clause and inside
+  `leave_group()`'s own explicit check — the same count, evaluated the
+  same way, in both the database-level guard and the friendlier
+  application-level error message.
+- **`member_removal_blockers(group_id, user_id)`** is `SECURITY
+  DEFINER` so it can read across `loans`, `loan_applications`,
+  `repayments`, `withdrawal_requests`, and `ownership_transfers`
+  regardless of the caller's own RLS visibility into each of those
+  tables individually — but it re-implements its own authorisation
+  check inside the function body (group manager, or the subject
+  themselves) rather than relying on the caller's ambient RLS access,
+  since that access is inconsistent across the five tables it queries.
+  It's the shared definition of "unsafe to remove" used by both
+  `remove_member()` and `leave_group()`, so the two can never disagree
+  about what blocks a departure.
+- **`accept_ownership_transfer(transfer_id)`** is the third narrowly-
+  scoped `SECURITY DEFINER` function in the app (alongside
+  `accept_invitation` and `get_invitation_preview` from Phase 2),
+  justified the same way: a user must be able to promote *themselves*
+  to `owner` and demote *another* user (the outgoing owner) in one
+  transaction, neither of which ordinary RLS on `group_memberships`
+  allows anywhere else in the schema — by design. Every check that
+  would normally live in an RLS policy is re-implemented explicitly in
+  PL/pgSQL instead: the transfer must be `pending` and unexpired (lazy
+  expiry, the same pattern as `accept_invitation`), the caller must be
+  the transfer's intended recipient, and both parties are re-verified
+  as active group members immediately before either row is touched.
+- **One pending ownership transfer per group, enforced by a unique
+  partial index** (`ownership_transfers_one_pending_per_group`, `where
+  status = 'pending'`) rather than an application-level check — the
+  same duplicate-submission protection pattern already used for
+  `loan_applications_one_open_per_member` and
+  `withdrawal_requests_one_open_per_member`.
+- **Bug found during live testing, fixed in
+  `0014_fix_member_management_owner_lock_visibility.sql`**:
+  `change_member_role()`, `suspend_member()`, and `remove_member()`
+  each looked up the target row with `select ... for update` before
+  deciding what to do. Under Postgres RLS, `SELECT ... FOR UPDATE` must
+  satisfy not only the `SELECT` policy but also the `USING` clause of
+  any applicable `UPDATE` policy — and the only `UPDATE` policy covering
+  these rows (`group_memberships_manage_non_owners`) deliberately
+  excludes `role = 'owner'`. So locking a target row that currently held
+  `owner` silently returned no row, and the code fell through to a
+  generic "Member not found in this group" instead of the intended
+  "...owner cannot be suspended/removed..." / "...ownership transfer
+  workflow..." message. The action was still correctly blocked either
+  way — RLS did its job regardless of which code path raised the error
+  — so this was never a security gap, only a misleading message. Fixed
+  by dropping `for update` from those three lookups; the later `update`
+  statement still serializes concurrent writes to the same row on its
+  own, so no locking guarantee was actually lost.
+
 ## Trusted session verification
 
 Every server-side "is this user authenticated" check — in Server
