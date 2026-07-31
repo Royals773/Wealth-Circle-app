@@ -273,13 +273,51 @@ voting was still open, when it was actually only their own vote
 — fixed by gating the tally display on the viewer's actual visibility
 rather than showing partial data unconditionally.
 
-**Deferred, not silently dropped:** the roadmap's original "financial
-correction workflow surfaced in the UI" line. Nothing in Phases 3-4 has
-ever created an `approval_requests` row with `subject_type =
-'financial_correction'` — reversals go through their own direct RPCs.
-No UI was built against a data source that doesn't exist yet.
+**The roadmap's original "financial correction workflow (reversal/
+adjustment entries with mandatory reasons) surfaced in the UI" line is
+delivered, not deferred** — via three domain-specific mechanisms rather
+than one unified screen: `reverse_contribution()` (Phase 3),
+`reverse_repayment()` (Phase 4), and `reverse_withdrawal_payment()`
+(this phase). Each requires a mandatory reason, is locked behind the
+same immutability trigger that protects verified/paid records from
+direct edits, and has its own dedicated UI dialog. A focused post-Phase-6
+gap analysis confirmed no code path anywhere has ever created an
+`approval_requests` row with `subject_type = 'financial_correction'` —
+that value has sat unused in the Phase 1 check constraint since the
+initial schema. Building a fourth, unified version routed through it
+would duplicate functionality the app already
+delivers correctly, so no such workflow was built, and none is planned.
 
-## Phase 7 — Reports, notifications and audit tools
+## Phase 7 — Member and role management
+
+Closes the gap noted back in Phase 2: RLS-level protections against
+self-promotion and unauthorised role changes have existed since Phase 2,
+but there has never been a screen to actually manage members or roles.
+Planned scope:
+
+- Viewing and searching group members
+- Promoting and demoting members between authorised roles
+- Suspending, reactivating, and removing members
+- Safe ownership transfer (a group must always have exactly one owner)
+- Structural prevention of removing or demoting the group's final owner
+- Structural prevention of unauthorised or self-serving role changes —
+  the same self-approval-prevention pattern (split RLS policies +
+  RPC-level check) established for loan applications (Phase 4) and
+  withdrawal decisions (Phase 6)
+- Correct handling of a member with active loans, pending withdrawal
+  requests, or other outstanding financial obligations at the point
+  they're suspended or removed — defined explicitly before
+  implementation, not left as an edge case discovered live
+- Immutable audit records for every membership and role change
+- RLS enforcement and cross-group isolation, verified with live security
+  tests the same way every other phase has been
+
+Not yet scoped in detail — implementation planning (including exact
+RPC surface, migration needs if any, and how outstanding financial
+obligations are handled) happens at the start of this phase, following
+the same research → plan → implement protocol as every prior phase.
+
+## Phase 8 — Reports, notifications and audit tools
 
 - Period reports (contributions, loans, group financial summary) with
   export
@@ -287,7 +325,7 @@ No UI was built against a data source that doesn't exist yet.
 - Audit log viewer for auditors/owners/administrators
 - Document management against Supabase Storage
 
-## Phase 8 — Production security, testing and launch
+## Phase 9 — Production security, testing and launch
 
 - Full RLS policy review and penetration-style testing of tenant isolation
 - Rate limiting, dependency/security scanning, CI hardening
