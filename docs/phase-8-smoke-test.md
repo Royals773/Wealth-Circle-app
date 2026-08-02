@@ -146,7 +146,19 @@ walkthrough, per the same policy established in Phase 5. The discarded
 first-attempt group (see "Methodology note" above) and its 6 accounts
 were deleted the same way. Deletion was independently verified
 afterward: both group IDs and all 12 user IDs confirmed gone from the
-live project, while the two pre-existing, unrelated demo groups from
+live project, and the two pre-existing, unrelated demo groups from
+earlier phases were confirmed untouched.
+
+A post-commit checkpoint re-verification also found one unrelated,
+orphaned test fixture — a single-member "Calendar Flex Test Group" from
+`tests/security/loan-eligibility-calendar.test.ts`, left behind when an
+earlier retry of the rate-limited live security suite (see "Automated
+results") had its own `beforeAll` create the group before that attempt
+failed and never reached its cleanup step. Not Phase 8 data, but deleted
+the same way once found (1 group, 1 account), independently confirmed
+removed.
+
+The two pre-existing, unrelated demo groups from
 earlier phases (`Calendar Flex Test Group`, `Calendar FlexMin Test
 Group`) were confirmed untouched.
 
