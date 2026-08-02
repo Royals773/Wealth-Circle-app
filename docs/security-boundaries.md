@@ -578,6 +578,111 @@ as every migration since `0002_phase2_auth_functions.sql`.
   statement still serializes concurrent writes to the same row on its
   own, so no locking guarantee was actually lost.
 
+## Notification and reporting integrity (Phase 8)
+
+- **`create_notification()`** is the fourth narrowly-scoped `SECURITY
+  DEFINER` function in the app (alongside `accept_invitation`,
+  `get_invitation_preview`, and `accept_ownership_transfer`), justified
+  the same way: it writes a row for a recipient who is usually not the
+  caller, which no general RLS policy should allow. It's idempotent via
+  a `dedupe_key` column with a partial unique index
+  (`unique (recipient_id, dedupe_key) where dedupe_key is not null`) —
+  every call site passes a key scoped to the specific event (e.g.
+  `contribution_verified:<record_id>`, or
+  `overdue_contribution:<member_id>:<group_id>:<date>` for the
+  date-scoped reminder functions), so retries and the reminder
+  functions re-running can never create duplicate notifications.
+- **Email delivery is bounded to shared-group recipients, not a general
+  "browse all pending notifications" capability.** Postgres can't send
+  SMTP, so actually delivering an email is necessarily a Next.js-layer
+  side effect — `claim_pending_notification_emails()` (`SECURITY
+  DEFINER`) atomically claims a batch of `pending` rows (flipping them
+  to `sending` so two concurrent flush calls can never send the same
+  email twice) but only returns rows whose recipient shares a group
+  with the calling user, the same kind of narrowing
+  `member_removal_blockers()` already uses — bounding what a flush
+  triggered by one user's action could ever expose about another user's
+  notifications. `mark_notification_email_result()` only ever
+  transitions a row already `sending` (i.e. one actually claimed), and
+  only to `sent` or `failed`.
+- **Email content is deliberately generic.** The email template uses
+  only the notification's `title` (kept non-sensitive at creation time
+  — e.g. "A contribution was verified in Riverside Savings", never an
+  amount) plus a sign-in link back to the relevant section page; the
+  fuller `body` (which may include amounts) is shown only in-app, after
+  the recipient authenticates and RLS re-applies. This is also why
+  notification links point at section pages, never record-specific
+  URLs — "recheck permission at the destination" is structural, not a
+  convention to remember, since every section page already goes through
+  the app's normal auth + RLS path regardless of how the visitor
+  arrived there.
+- **Preferences gate email only, never the in-app notification**, and
+  cannot silently disable the two essential categories (`membership`,
+  `ownership_transfer`) — `create_notification()` hardcodes those as
+  always-email regardless of what preference row exists, and the
+  `setNotificationPreferenceAction` Server Action refuses to write a
+  preference row for them at all, as defense-in-depth on top of the
+  database-level enforcement.
+- **`SUPABASE_SECRET_KEY` still never appears anywhere under `src/`.**
+  The scheduled reminder functions (`send_overdue_contribution_reminders()`,
+  `send_overdue_repayment_reminders()`, `send_governance_deadline_reminders()`,
+  `expire_stale_invitations()`, `expire_stale_ownership_transfers()`) are
+  all `SECURITY DEFINER` because they scan across every group, not just
+  a caller's own — but nothing in the application calls them; they're
+  tested by calling them directly with the same admin/service-role
+  client `tests/security/*.test.ts` already uses for setup/teardown.
+  Actually wiring a scheduler to call them periodically is Phase 9's
+  job.
+- **CSV export re-derives every report from the same server-side
+  loaders and filters the on-screen version uses** — a Route Handler,
+  not a Server Action, since a real file download needs genuine HTTP
+  response headers (`Content-Disposition`). Every export logs an
+  `audit_logs` row (`report_export_generated`) before streaming.
+  `src/lib/csv.ts`'s `escapeCsvCell()` guards any cell beginning with
+  `=`, `+`, `-`, or `@` (the character classes spreadsheet formula
+  injection relies on) by prefixing a single quote, and rows are capped
+  at 10,000 with a visible truncation notice rather than attempting an
+  unbounded in-memory export.
+- **Bug found during live testing: two regressions, both introduced by
+  this phase's own migration.** `0015_phase8_reports_notifications_audit.sql`'s
+  edits to `accept_invitation()`, `request_withdrawal()`, and
+  `decide_withdrawal_request()` were each based on the *original*
+  function body from the migration that first defined them (`0002`,
+  `0011`), not the already-corrected version from a later bug-fix
+  migration (`0004`'s ambiguous-column fix, `0012`'s withdrawal-balance
+  fix) — silently reintroducing both previously-fixed bugs. The first
+  live test run caught the `accept_invitation` regression immediately
+  (Postgres error 42702, identical to the original `0004` bug); a
+  systematic cross-check of every one of the 26 existing functions this
+  migration touched, against the full migration history, confirmed
+  these were the only two affected. Fixed in
+  `0016_fix_accept_invitation_ambiguous_column_regression.sql` — three
+  pure `create or replace function` statements, each re-applying the
+  correct historical fix with the new notification call kept on top.
+  **Lesson applied going forward**: when a function has been patched by
+  a later migration, any subsequent edit must be based on that later
+  version, never the version in the migration that originally defined
+  it.
+- **A real, non-regression gap found and fixed: `loan_officer` and the
+  group financial overview.** `contribution_records`' RLS (Phase 3) was
+  never extended to `loan_officer` — only owner/administrator/treasurer/
+  auditor. But `loan_officer` has the `view_reports` capability
+  (`src/lib/permissions.ts`), which the Reports page and export route
+  originally used as the sole gate for the group financial overview —
+  a report that combines contribution figures with loan and withdrawal
+  data. A `loan_officer` viewing it would have silently seen
+  RLS-truncated contribution totals (their own row only, or none)
+  presented as if they were the complete group figures, with no error
+  to indicate anything was missing — the same class of bug as Phase 6's
+  vote-tally visibility issue. Fixed by gating the overview specifically
+  to the roles `contribution_records`' RLS actually covers, both on the
+  page (`canViewFinancialOverview`) and in the export route handler —
+  `loan_officer` still sees everything else `view_reports` grants
+  (specialist CSV exports, membership/governance data, their own
+  statement) and retains full detail on the existing Loans page, which
+  was never affected since `loans`/`repayments`' RLS already includes
+  `loan_officer`.
+
 ## Trusted session verification
 
 Every server-side "is this user authenticated" check — in Server

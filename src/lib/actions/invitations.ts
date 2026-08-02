@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
 import { getAppUrl } from "@/lib/env";
 import { initialInviteSchema } from "@/lib/validations/group";
 import type { AuthActionState } from "@/lib/actions/auth";
@@ -84,6 +85,7 @@ export async function revokeInvitationAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return {};
 }
 
@@ -117,5 +119,6 @@ export async function confirmAcceptInvitationAction(
     };
   }
 
+  await flushPendingNotificationEmails();
   redirect(`/dashboard/${result.group_id}`);
 }

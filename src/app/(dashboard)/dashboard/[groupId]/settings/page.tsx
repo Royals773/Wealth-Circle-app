@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Settings as SettingsIcon } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ContributionPlanForm,
   type ContributionPlanSummary,
@@ -10,6 +10,7 @@ import {
 import { LoanPolicyForm, type LoanPolicySummary } from "@/components/dashboard/loan-policy-form";
 import { WithdrawalPolicyForm } from "@/components/dashboard/withdrawal-policy-form";
 import { LeaveGroupSection } from "@/components/dashboard/leave-group-section";
+import { NotificationPreferencesForm } from "@/components/dashboard/notification-preferences-form";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
@@ -111,6 +112,21 @@ async function loadActiveLoanPolicy(groupId: string): Promise<LoanPolicySummary 
   };
 }
 
+async function loadNotificationPreferences(): Promise<Record<string, boolean>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return {};
+
+  const { data } = await supabase
+    .from("notification_preferences")
+    .select("category, email_enabled")
+    .eq("user_id", user.id);
+
+  return Object.fromEntries((data ?? []).map((row) => [row.category, row.email_enabled]));
+}
+
 async function countActiveOwners(groupId: string): Promise<number> {
   const supabase = await createClient();
   const { count } = await supabase
@@ -137,11 +153,12 @@ export default async function SettingsPage({
   const canManageWithdrawals = currentRole !== null && roleHasCapability(currentRole, "manage_withdrawal_policy");
   // Loaded regardless of role: this is what everyone sees displayed below,
   // not just what the edit form (owner/administrator/treasurer only) uses.
-  const [plan, loanPolicy, withdrawalPolicy, activeOwnerCount] = await Promise.all([
+  const [plan, loanPolicy, withdrawalPolicy, activeOwnerCount, notificationPreferences] = await Promise.all([
     loadActiveContributionPlan(groupId),
     loadActiveLoanPolicy(groupId),
     isSupabaseConfigured ? loadWithdrawalPolicy(groupId) : Promise.resolve(null),
     currentRole === "owner" ? countActiveOwners(groupId) : Promise.resolve(null),
+    currentRole !== null ? loadNotificationPreferences() : Promise.resolve({}),
   ]);
   const isLastOwner = currentRole === "owner" && (activeOwnerCount ?? 0) <= 1;
 
@@ -379,6 +396,21 @@ export default async function SettingsPage({
               </p>
             </CardContent>
           </Card>
+
+          {currentRole !== null ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Email notifications</CardTitle>
+                <CardDescription>
+                  Choose which categories email you — every category always appears in your in-app
+                  notification centre regardless of this setting.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <NotificationPreferencesForm initialPreferences={notificationPreferences} />
+              </CardContent>
+            </Card>
+          ) : null}
 
           {currentRole !== null ? (
             <LeaveGroupSection groupId={groupId} isLastOwner={isLastOwner} />

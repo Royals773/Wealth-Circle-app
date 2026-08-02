@@ -1,5 +1,6 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getDashboardContext } from "@/lib/data/dashboard";
+import { loadUnreadNotificationCount } from "@/lib/data/notification-summary";
 
 export default async function GroupDashboardLayout({
   children,
@@ -9,13 +10,17 @@ export default async function GroupDashboardLayout({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const context = await getDashboardContext(groupId);
+  const [context, unreadNotificationCount] = await Promise.all([
+    getDashboardContext(groupId),
+    loadUnreadNotificationCount(),
+  ]);
 
   return (
     <DashboardShell
       groupId={context.groupId}
       currentGroup={context.currentGroup}
       memberships={context.memberships}
+      unreadNotificationCount={unreadNotificationCount}
     >
       {!context.configured ? (
         <div className="mb-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">

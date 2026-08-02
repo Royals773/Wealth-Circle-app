@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
 import { getPeriodContaining } from "@/lib/contribution-periods";
 import {
   contributionPlanFormSchema,
@@ -159,6 +160,7 @@ export async function recordContributionAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/contributions`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -216,6 +218,7 @@ export async function editContributionAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/contributions`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -231,6 +234,7 @@ export async function verifyContributionAction(
   if (error) return { error: error.message };
 
   revalidatePath(`/dashboard/${groupId}/contributions`);
+  await flushPendingNotificationEmails();
   return {};
 }
 
@@ -276,6 +280,7 @@ export async function rejectContributionAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/contributions`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -343,5 +348,6 @@ export async function reverseContributionAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/contributions`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }

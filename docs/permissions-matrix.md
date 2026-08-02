@@ -80,3 +80,15 @@ Notes:
   A group can never be left without an active owner: enforced by
   `active_owner_count()`, used identically in both RLS and the RPCs, not
   just counted client-side.
+- **"View reports" is not perfectly uniform across the roles that hold
+  it.** `contribution_records`' RLS (Phase 3) was never extended to
+  `loan_officer` — only owner/administrator/treasurer/auditor — even
+  though `loan_officer` has the `view_reports` capability. Rather than
+  widen that RLS policy for one report, the Phase 8 group financial
+  overview (which combines contribution data) is gated specifically to
+  the roles that policy actually covers; a `loan_officer` sees an
+  explanatory message there instead of a silently-incomplete total, but
+  keeps full access to loan/repayment reports and detail (`loans`/
+  `repayments`' RLS does include `loan_officer`) and every other
+  `view_reports`-gated feature. See
+  [security-boundaries.md](./security-boundaries.md#notification-and-reporting-integrity-phase-8).

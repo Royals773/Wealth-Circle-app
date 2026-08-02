@@ -21,11 +21,13 @@ export function DashboardShell({
   groupId,
   currentGroup,
   memberships,
+  unreadNotificationCount,
   children,
 }: {
   groupId: string;
   currentGroup: GroupSummary;
   memberships: GroupSummary[];
+  unreadNotificationCount: number;
   children: React.ReactNode;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -45,7 +47,7 @@ export function DashboardShell({
           </Link>
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-4">
-          <SidebarNav groupId={groupId} />
+          <SidebarNav groupId={groupId} unreadNotificationCount={unreadNotificationCount} />
         </div>
       </aside>
 
@@ -62,7 +64,11 @@ export function DashboardShell({
                 <SheetTitle className="text-sidebar-foreground">WealthCircle</SheetTitle>
               </SheetHeader>
               <div className="px-3 py-4">
-                <SidebarNav groupId={groupId} onNavigate={() => setMobileNavOpen(false)} />
+                <SidebarNav
+                  groupId={groupId}
+                  unreadNotificationCount={unreadNotificationCount}
+                  onNavigate={() => setMobileNavOpen(false)}
+                />
               </div>
             </SheetContent>
           </Sheet>

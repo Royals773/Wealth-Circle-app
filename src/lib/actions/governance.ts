@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
 import { createProposalSchema, reasonSchema, voteSchema } from "@/lib/validations/governance";
 
 export interface GovernanceActionState {
@@ -63,6 +64,7 @@ export async function createGovernanceProposalAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/governance`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 

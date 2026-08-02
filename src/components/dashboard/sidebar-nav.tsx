@@ -4,8 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { DASHBOARD_NAV_ITEMS } from "@/components/dashboard/nav-items";
+import { Badge } from "@/components/ui/badge";
 
-export function SidebarNav({ groupId, onNavigate }: { groupId: string; onNavigate?: () => void }) {
+export function SidebarNav({
+  groupId,
+  unreadNotificationCount = 0,
+  onNavigate,
+}: {
+  groupId: string;
+  unreadNotificationCount?: number;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const basePath = `/dashboard/${groupId}`;
 
@@ -14,6 +23,7 @@ export function SidebarNav({ groupId, onNavigate }: { groupId: string; onNavigat
       {DASHBOARD_NAV_ITEMS.map((item) => {
         const href = item.segment ? `${basePath}/${item.segment}` : basePath;
         const isActive = pathname === href;
+        const showUnreadBadge = item.segment === "notifications" && unreadNotificationCount > 0;
 
         return (
           <Link
@@ -29,7 +39,12 @@ export function SidebarNav({ groupId, onNavigate }: { groupId: string; onNavigat
             )}
           >
             <item.icon aria-hidden className="h-4 w-4 shrink-0" />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {showUnreadBadge ? (
+              <Badge variant="destructive" className="h-5 min-w-5 justify-center px-1 text-[11px]">
+                {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+              </Badge>
+            ) : null}
           </Link>
         );
       })}

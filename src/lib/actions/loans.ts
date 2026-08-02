@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
 import {
   disbursementSchema,
   loanApplicationSchema,
@@ -151,6 +152,7 @@ export async function applyForLoanAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/loans`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -240,6 +242,7 @@ export async function decideLoanApplicationAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/loans`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -276,6 +279,7 @@ export async function recordDisbursementAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/loans`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -352,6 +356,7 @@ export async function recordRepaymentAction(
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
   revalidatePath(`/dashboard/${groupId}/loans`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -364,6 +369,7 @@ export async function verifyRepaymentAction(groupId: string, repaymentId: string
   if (error) return { error: error.message };
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
+  await flushPendingNotificationEmails();
   return {};
 }
 
@@ -406,6 +412,7 @@ export async function rejectRepaymentAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -466,5 +473,6 @@ export async function reverseRepaymentAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }

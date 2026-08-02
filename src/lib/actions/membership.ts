@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
 import {
   changeRoleSchema,
   initiateTransferSchema,
@@ -60,6 +61,7 @@ export async function changeMemberRoleAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -90,6 +92,7 @@ export async function suspendMemberAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -106,6 +109,7 @@ export async function reactivateMemberAction(groupId: string, memberId: string):
   if (error) return { error: error.message };
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return {};
 }
 
@@ -136,6 +140,7 @@ export async function removeMemberAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -195,6 +200,7 @@ export async function initiateOwnershipTransferAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -207,6 +213,7 @@ export async function acceptOwnershipTransferAction(groupId: string, transferId:
   if (error) return { error: error.message };
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return {};
 }
 
@@ -222,6 +229,7 @@ export async function declineOwnershipTransferAction(groupId: string, transferId
   if (error) return { error: error.message };
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return {};
 }
 
@@ -251,5 +259,6 @@ export async function cancelOwnershipTransferAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/members`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }

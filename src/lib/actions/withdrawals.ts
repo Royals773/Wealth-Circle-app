@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
 import {
   confirmWithdrawalPaymentSchema,
   decideWithdrawalSchema,
@@ -147,6 +148,7 @@ export async function requestWithdrawalAction(
 
   revalidatePath(`/dashboard/${groupId}/withdrawals`);
   revalidatePath(`/dashboard/${groupId}`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -212,6 +214,7 @@ export async function decideWithdrawalRequestAction(
 
   revalidatePath(`/dashboard/${groupId}/withdrawals`);
   revalidatePath(`/dashboard/${groupId}/approvals`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -259,6 +262,7 @@ export async function confirmWithdrawalPaymentAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/withdrawals`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }
 
@@ -289,5 +293,6 @@ export async function reverseWithdrawalPaymentAction(
   }
 
   revalidatePath(`/dashboard/${groupId}/withdrawals`);
+  await flushPendingNotificationEmails();
   return { status: "success" };
 }

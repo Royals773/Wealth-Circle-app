@@ -88,6 +88,18 @@ export type GovernanceProposalStatus = "open" | "cancelled";
 
 export type OwnershipTransferStatus = "pending" | "accepted" | "declined" | "cancelled" | "expired";
 
+export type NotificationEmailStatus = "not_required" | "pending" | "sending" | "sent" | "failed";
+
+export type NotificationCategory =
+  | "invitation"
+  | "contribution"
+  | "loan"
+  | "repayment"
+  | "withdrawal"
+  | "governance"
+  | "membership"
+  | "ownership_transfer";
+
 interface Table<Row, Insert, Update> {
   Row: Row;
   Insert: Insert;
@@ -356,6 +368,33 @@ export interface Database {
       accept_ownership_transfer: Fn<{ p_transfer_id: string }, undefined>;
       decline_ownership_transfer: Fn<{ p_transfer_id: string; p_reason: string | null }, undefined>;
       cancel_ownership_transfer: Fn<{ p_transfer_id: string; p_reason: string }, undefined>;
+      create_notification: Fn<
+        {
+          p_recipient_id: string;
+          p_group_id: string | null;
+          p_category: NotificationCategory;
+          p_type: string;
+          p_title: string;
+          p_body: string | null;
+          p_related_type: string | null;
+          p_related_id: string | null;
+          p_dedupe_key: string;
+        },
+        string | null
+      >;
+      claim_pending_notification_emails: Fn<
+        { p_limit: number },
+        { notification_id: string; recipient_email: string; subject: string; action_path: string }[]
+      >;
+      mark_notification_email_result: Fn<
+        { p_notification_id: string; p_status: "sent" | "failed"; p_error: string | null },
+        undefined
+      >;
+      send_overdue_contribution_reminders: Fn<{ p_today: string }, number>;
+      send_overdue_repayment_reminders: Fn<{ p_today: string }, number>;
+      send_governance_deadline_reminders: Fn<{ p_now: string }, number>;
+      expire_stale_invitations: Fn<{ p_now: string }, number>;
+      expire_stale_ownership_transfers: Fn<{ p_now: string }, number>;
     };
     Tables: {
       profiles: Table<
@@ -998,25 +1037,50 @@ export interface Database {
           id: string;
           group_id: string | null;
           recipient_id: string;
+          category: NotificationCategory | null;
           type: string;
           title: string;
           body: string | null;
           is_read: boolean;
           related_type: string | null;
           related_id: string | null;
+          dedupe_key: string | null;
+          email_status: NotificationEmailStatus;
+          email_attempted_at: string | null;
+          email_error: string | null;
           created_at: string;
         },
         {
           group_id?: string | null;
           recipient_id: string;
+          category?: NotificationCategory | null;
           type: string;
           title: string;
           body?: string | null;
           related_type?: string | null;
           related_id?: string | null;
+          dedupe_key?: string | null;
+          email_status?: NotificationEmailStatus;
         },
         {
           is_read?: boolean;
+        }
+      >;
+      notification_preferences: Table<
+        {
+          user_id: string;
+          category: string;
+          email_enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          user_id: string;
+          category: string;
+          email_enabled?: boolean;
+        },
+        {
+          email_enabled?: boolean;
         }
       >;
       audit_logs: Table<

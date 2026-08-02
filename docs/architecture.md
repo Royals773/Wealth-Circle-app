@@ -402,6 +402,71 @@ immediately" and "a stale session can't retain permissions" requirements
 with zero additional RLS changes anywhere outside `group_memberships`
 itself.
 
+## Reports, notifications and audit (Phase 8)
+
+Adds `supabase/migrations/0015_phase8_reports_notifications_audit.sql`
+(new `notifications` columns, new `notification_preferences` table,
+8 new functions, and an additive `perform create_notification(...)`
+call in 26 existing lifecycle RPCs) plus a follow-up correction,
+`0016_fix_accept_invitation_ambiguous_column_regression.sql` — see
+[security-boundaries.md](./security-boundaries.md#notification-and-reporting-integrity-phase-8)
+for both the notification-delivery architecture and the two bugs the
+follow-up fixes.
+
+**Reports need no new schema at all.** `src/lib/data/reports-summary.ts`
+composes `loadGroupContributionSummary`/`loadGroupLoanSummary`/
+`loadGroupWithdrawalSummary` (all reused from Phase 5, not
+reimplemented) into a group financial overview, plus a small set of
+direct queries for the filterable transaction detail list, arrears, and
+reconciliation-exceptions reports. `src/lib/data/member-statement.ts`
+computes opening/closing ledger balance (verified contributions minus
+paid withdrawals, as of a date) live, never a stored snapshot — the
+same "don't persist what can be recomputed" rule as `computeLoanStatus`/
+`computeProposalResult`. CSV export is a Route Handler
+(`.../reports/export/route.ts`), not a Server Action, since a real file
+download needs genuine `Content-Disposition` response headers;
+`src/lib/csv.ts` provides the formula-injection-safe serializer, unit
+tested directly.
+
+**Notifications are created inside the same transaction as the
+triggering mutation, via `create_notification()`** — a `SECURITY
+DEFINER` helper following the same pattern as Phase 7's
+`member_removal_blockers()`. Every existing lifecycle RPC across
+`0002`/`0006`/`0007`/`0011`/`0013` gained one additive call next to its
+existing `audit_logs` insert; nothing about any RPC's existing checks
+or error messages changed. Idempotency is a `dedupe_key` column with a
+partial unique index, not application-level deduplication.
+
+**Email is a Next.js-layer side effect, since Postgres can't send
+SMTP.** `src/lib/email/mailer.ts` (nodemailer + Mailtrap SMTP, safe
+no-op when unconfigured, mirroring `isSupabaseConfigured`) and
+`src/lib/email/templates.ts` (one shared, generic, accessible template)
+are used by `flushPendingNotificationEmails()` in
+`src/lib/actions/notifications.ts`, called after every
+notification-emitting Server Action's `revalidatePath` and once more
+from the Notifications page on load — best-effort and synchronous, no
+queue/worker. `claim_pending_notification_emails()` and
+`mark_notification_email_result()` are the two narrow `SECURITY
+DEFINER` seams this needs; `SUPABASE_SECRET_KEY` is still never
+referenced anywhere under `src/` — the scheduled reminder functions are
+tested by calling them directly with the same admin client
+`tests/security/*.test.ts` already uses for setup/teardown, never from
+application code.
+
+**UI**: a rewritten Reports page (financial overview with filters and
+CSV export, arrears and reconciliation-exceptions cards, membership/
+governance/audit CSV export buttons, and a member-statement generator
+usable by every member for themselves and by officers for anyone), a
+rewritten Notifications page (unread count, mark one/all read,
+pagination, group/category filters — `src/lib/data/notification-summary.ts`),
+a notification-preferences card on Settings
+(`src/components/dashboard/notification-preferences-form.tsx`), and a
+new Audit log page (`.../audit/page.tsx`, filterable by date/actor/
+target type/domain, gated identically to the existing `audit_logs` RLS
+policy — `categorizeAuditAction()` in `src/lib/data/audit-summary.ts`
+derives the "domain" filter from the existing `action` string, no new
+column).
+
 ## Supabase-ready architecture (still works with zero credentials)
 
 Even though a real Supabase project is now connected for Phase 2, every
@@ -480,9 +545,12 @@ Two layers:
   contribution period/overdue-status math (`contribution-periods.test.ts`,
   `contributions.test.ts`), the Phase 4 loan eligibility/schedule/
   interest/allocation math (`loan-eligibility.test.ts`, `loans.test.ts`),
-  and the Phase 6 governance result/eligibility math
-  (`governance.test.ts`). These run with no Supabase project and are
-  part of the standard build gate. 123 currently pass.
+  the Phase 6 governance result/eligibility math (`governance.test.ts`),
+  and the Phase 8 CSV formula-injection escaping, ledger date-boundary
+  arithmetic, and audit-action domain categorization (`csv.test.ts`,
+  `member-statement.test.ts`, `audit-summary.test.ts`). These run with
+  no Supabase project and are part of the standard build gate. 152
+  currently pass.
 - **Live security tests** (`npm run test:security`, gated behind real
   Supabase credentials — see `tests/security/README.md`): exercise Row
   Level Security and the invitation lifecycle
@@ -492,19 +560,24 @@ Two layers:
   repayment workflow (`loans.test.ts`), exact calendar-period agreement
   between the SQL and TypeScript eligibility calculations
   (`loan-eligibility-calendar.test.ts`), the Phase 6 withdrawal and
-  governance RLS/RPCs (`withdrawals.test.ts`, `governance.test.ts`), and
-  the Phase 7 member/role-management RLS/RPCs — role changes,
-  self-promotion and owner-protection prevention, suspend/reactivate
-  access loss, removal blockers, last-owner protection, and the full
-  ownership-transfer lifecycle (`membership.test.ts`) — against an
-  actual project using real test users and groups. Skipped automatically
-  (not failed) when Supabase env vars aren't present, so the standard
-  build/test gate never depends on a live project. All 102 currently
-  pass against a live project; running this suite is what caught the two
-  bugs fixed in `0003`/`0004` (see
+  governance RLS/RPCs (`withdrawals.test.ts`, `governance.test.ts`), the
+  Phase 7 member/role-management RLS/RPCs (`membership.test.ts`), and
+  the Phase 8 notification pipeline — recipient selection, dedupe on
+  retry, read/unread, cross-group isolation, preference enforcement
+  (including the essential-category override), the
+  same-group-bounded email claim, and the scheduled reminder/expiry
+  functions called directly (`notifications.test.ts`); report
+  visibility including the `loan_officer` gap (`reports.test.ts`); and
+  audit log permission boundaries and append-only immutability
+  (`audit.test.ts`) — against an actual project using real test users
+  and groups. Skipped automatically (not failed) when Supabase env vars
+  aren't present, so the standard build/test gate never depends on a
+  live project. All 127 currently pass against a live project; running this
+  suite is what caught the two bugs fixed in `0003`/`0004` (see
   [security-boundaries.md](./security-boundaries.md#bugs-found-during-live-phase-2-testing)),
-  the Phase 6 balance and tally-visibility bugs, and the Phase 7
-  owner-lock error-message bug fixed in `0014`.
+  the Phase 6 balance and tally-visibility bugs, the Phase 7 owner-lock
+  error-message bug fixed in `0014`, and the two Phase 8 regressions
+  fixed in `0016`.
 
 UI composition is verified by building the app and visually checking key
 pages rather than with brittle snapshot tests at this stage.

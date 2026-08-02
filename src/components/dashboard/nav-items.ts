@@ -9,6 +9,7 @@ import {
   Vote,
   FileBarChart,
   Bell,
+  ScrollText,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -29,6 +30,7 @@ export const DASHBOARD_NAV_ITEMS: NavItem[] = [
   { label: "Approvals", segment: "approvals", icon: ClipboardCheck },
   { label: "Governance", segment: "governance", icon: Vote },
   { label: "Reports", segment: "reports", icon: FileBarChart },
+  { label: "Audit log", segment: "audit", icon: ScrollText },
   { label: "Notifications", segment: "notifications", icon: Bell },
   { label: "Settings", segment: "settings", icon: Settings },
 ];

@@ -50,7 +50,8 @@ TypeScript mirror: [`src/lib/types/database.ts`](../src/lib/types/database.ts).
 | `governance_proposals` | Proposals a group votes on. |
 | `votes` | One vote per `(proposal_id, voter_id)` — `for` / `against` / `abstain`. |
 | `documents` | Metadata for files stored in Supabase Storage (`storage_path`) — no binary content in Postgres. |
-| `notifications` | User-scoped (`recipient_id`); `group_id` nullable because some notifications (e.g. an invitation) precede group membership. |
+| `notifications` | User-scoped (`recipient_id`); `group_id` nullable because some notifications (e.g. an invitation) precede group membership. *(Phase 8)* gained `category`, `dedupe_key` (partial-unique for idempotent creation), and `email_status`/`email_attempted_at`/`email_error` for the Mailtrap delivery pipeline. |
+| `notification_preferences` *(Phase 8)* | Per-user, per-category `email_enabled` flag — gates email only, never the in-app notification. `membership`/`ownership_transfer` are hardcoded essential categories inside `create_notification()`, not represented as rows here. |
 | `audit_logs` | Append-only record of sensitive actions. No `UPDATE`/`DELETE` RLS policy exists for this table — rows cannot be altered or removed through the API. |
 
 ## Status lifecycles
@@ -111,6 +112,25 @@ for the RLS gap this phase closed.
 | `initiate_ownership_transfer` | invoker | Owner-only. Target must be an active, non-owner member; one pending transfer per group (unique index). |
 | `accept_ownership_transfer` | **definer** | Recipient-only. In one transaction: promotes the caller to `owner`, demotes the outgoing owner to `administrator`, marks the transfer accepted. Definer because ordinary RLS never allows self-promotion. |
 | `decline_ownership_transfer` / `cancel_ownership_transfer` | invoker | Recipient declines their own pending transfer; any current owner of the group can cancel it. |
+
+## Phase 8 database functions
+
+Added in `0015_phase8_reports_notifications_audit.sql`, with two
+function-body corrections in
+`0016_fix_accept_invitation_ambiguous_column_regression.sql` (see
+[security-boundaries.md](./security-boundaries.md#notification-and-reporting-integrity-phase-8)).
+Every existing lifecycle RPC also gained one additive
+`perform create_notification(...)` call — not re-listed here since
+each is otherwise unchanged from its own phase's table above.
+
+| Function | Security | Purpose |
+|---|---|---|
+| `create_notification` | **definer** | Writes a notification for a recipient who usually isn't the caller. Decides email eligibility (essential categories always email; others check the recipient's preference). Idempotent via `dedupe_key` — a repeat key is a silent no-op, returning the existing row's id. |
+| `claim_pending_notification_emails` | **definer** | Atomically claims a batch of `pending` emails for delivery, bounded to notifications whose recipient shares a group with the caller. Never returns notification body content. |
+| `mark_notification_email_result` | **definer** | Records delivery success/failure. Only transitions a row already `sending` (i.e. one actually claimed). |
+| `send_overdue_contribution_reminders` / `send_overdue_repayment_reminders` | **definer** | Scan across every group for overdue members/loans and queue a reminder notification each, idempotent per day via `dedupe_key`. Not yet wired to a scheduler (Phase 9). |
+| `send_governance_deadline_reminders` | **definer** | Notifies eligible members who haven't voted on a proposal closing within 24h, and the proposer once voting closes. |
+| `expire_stale_invitations` / `expire_stale_ownership_transfers` | **definer** | Flip past-due pending rows to `expired` and notify the inviter/initiator. Idempotent — re-running only affects rows still `pending`. |
 
 ## Regenerating TypeScript types from a live project
 

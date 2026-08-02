@@ -17,6 +17,15 @@ const envSchema = z.object({
   // reserved for a future trusted server-side process that genuinely
   // needs to bypass Row Level Security (e.g. a scheduled job).
   SUPABASE_SECRET_KEY: z.string().min(1).optional().or(z.literal("")),
+  // Mailtrap SMTP (development email sandbox only — see
+  // docs/security-boundaries.md). All optional: notification emails are
+  // a safe no-op when unset, the same graceful-degradation pattern as
+  // isSupabaseConfigured.
+  MAILTRAP_HOST: z.string().min(1).optional().or(z.literal("")),
+  MAILTRAP_PORT: z.coerce.number().int().positive().optional(),
+  MAILTRAP_USER: z.string().min(1).optional().or(z.literal("")),
+  MAILTRAP_PASS: z.string().min(1).optional().or(z.literal("")),
+  MAILTRAP_FROM_EMAIL: z.string().email().optional().or(z.literal("")),
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -27,6 +36,11 @@ function loadEnv(): Env {
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+    MAILTRAP_HOST: process.env.MAILTRAP_HOST,
+    MAILTRAP_PORT: process.env.MAILTRAP_PORT,
+    MAILTRAP_USER: process.env.MAILTRAP_USER,
+    MAILTRAP_PASS: process.env.MAILTRAP_PASS,
+    MAILTRAP_FROM_EMAIL: process.env.MAILTRAP_FROM_EMAIL,
   });
 
   if (!parsed.success) {

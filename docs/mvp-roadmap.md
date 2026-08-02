@@ -372,13 +372,115 @@ this only fixed which error message the caller sees. Fixed in
 there; the later `update` statement still serializes concurrent writes
 to the same row on its own).
 
-## Phase 8 — Reports, notifications and audit tools
+## Phase 8 — Reports, notifications and audit tools *(complete)*
 
-- Period reports (contributions, loans, group financial summary) with
-  export
-- Real-time notifications for approvals, invitations and governance events
-- Audit log viewer for auditors/owners/administrators
-- Document management against Supabase Storage
+`notifications` and `audit_logs` have existed, unused and fully wired
+respectively, since the Phase 1 schema. `audit_logs` was already
+complete (every mutating RPC since Phase 2 writes to it); `notifications`
+had never had a single row inserted by any code path before this phase.
+Reports needed no new schema at all — they're computed live from
+existing tables, reusing the same shared summary loaders the dashboards
+already use (`contribution-summary.ts`, `loan-summary.ts`,
+`withdrawal-summary.ts`) rather than recalculating totals a second way.
+
+- **Group financial overview report**: verified/pending/outstanding
+  contributions, overdue member count, loan principal outstanding,
+  interest expected/received, withdrawal pending/paid totals, and a
+  reversed/corrected-record count — filterable by date range, member,
+  transaction type, status, and reconciliation state, with a filtered
+  transaction table and CSV export. Gated to owner/administrator/
+  treasurer/auditor specifically, not the broader `view_reports`
+  capability — see "bugs found" below for why.
+- **Member statement**: a WealthCircle ledger statement (explicitly not
+  a bank statement, regulated credit statement, tax document, or
+  financial advice) — opening/closing balance for a period (verified
+  contributions minus paid withdrawals, computed live, never stored),
+  contributions/withdrawals/loan disbursements/repayments/reversals in
+  the period, pending transactions shown separately, and outstanding
+  loans as a current snapshot. Members generate their own; officers with
+  `view_reports` may generate any member's.
+- **Specialist reports**: contribution/repayment arrears, reconciliation
+  exceptions (verified but not yet reconciled), plus CSV exports for
+  membership/role, governance proposals, and (for auditors) audit
+  activity.
+- **CSV export**: a Route Handler (not a Server Action — a real file
+  download needs genuine HTTP response headers), formula-injection-safe
+  (`src/lib/csv.ts` guards any cell starting with `=`, `+`, `-`, or `@`),
+  every report regenerated server-side from the same loaders and
+  filters as the on-screen version (never a client-supplied total),
+  capped at 10,000 rows with a truncation notice, and logged as an
+  `audit_logs` row (`report_export_generated`) before streaming.
+- **Notification centre**: unread count, mark one/all read, pagination,
+  filtering by group and category, safe links back to the relevant
+  section page (never a record-specific URL — permission is always
+  rechecked at the destination by that page's own normal auth/RLS path,
+  the same guarantee Phase 7 established for suspension).
+- **Notification events**: `create_notification()`, a narrowly-scoped
+  `SECURITY DEFINER` helper (same justification as Phase 7's
+  `member_removal_blockers`), called from every lifecycle RPC that
+  should notify someone — invitation accepted/revoked/expired,
+  contribution recorded/verified/rejected/reversed/overdue, loan
+  submitted/approved/rejected/disbursed/overdue/fully repaid, repayment
+  recorded/verified/rejected/reversed, withdrawal submitted/approved/
+  rejected/paid/reversed, governance opened/deadline approaching/
+  completed, ownership transfer initiated/accepted/declined/cancelled/
+  expired, and every membership change from Phase 7. Idempotent via a
+  `dedupe_key` column with a partial unique index, so retries and the
+  reminder functions re-running can never create duplicate notifications.
+- **Email notifications**: Mailtrap SMTP only (still dev-only), one
+  shared accessible template with no amounts or specifics in the email
+  itself — only a non-sensitive title and a sign-in link, with the full
+  detail shown in-app after authentication. Postgres can't send SMTP, so
+  delivery is a Next.js-layer side effect: `claim_pending_notification_emails()`
+  (bounded to notifications whose recipient shares a group with the
+  caller) and `mark_notification_email_result()` are the two narrow
+  `SECURITY DEFINER` seams used for this — `SUPABASE_SECRET_KEY` still
+  never appears anywhere under `src/`.
+- **Notification preferences**: per-user, per-category, email-only (the
+  in-app notification always exists regardless). `membership` and
+  `ownership_transfer` are essential categories that always email,
+  matching the "should not be silently disabled" requirement. Absence
+  of a preference row means enabled, so existing users needed no
+  backfill.
+- **Scheduled reminders**: `send_overdue_contribution_reminders()`,
+  `send_overdue_repayment_reminders()`, `send_governance_deadline_reminders()`,
+  `expire_stale_invitations()`, `expire_stale_ownership_transfers()` —
+  real, idempotent SQL functions, tested by calling them directly, not
+  wired to an actual scheduler this phase (that's Phase 9's job:
+  `pg_cron` or an external scheduler pointed at these).
+- **Audit log viewer**: filterable by date range, actor, target type,
+  and a derived "domain" (financial/governance/membership/etc.,
+  computed from the existing `action` string, not a new column) —
+  gated identically to the existing `audit_logs` RLS (owner/
+  administrator/auditor only), so the viewer grants no access beyond
+  what that policy already allows.
+
+**Two real bugs found and fixed during live testing, both regressions
+introduced by this phase itself** — see
+[security-boundaries.md](./security-boundaries.md#notification-and-reporting-integrity-phase-8)
+for the full detail:
+
+1. The `accept_invitation()` and `request_withdrawal()`/
+   `decide_withdrawal_request()` edits in the main migration were based
+   on the *original* function bodies from `0002`/`0011`, not the
+   already-corrected versions from `0004` (ambiguous-column fix) and
+   `0012` (withdrawal-balance fix) — silently reintroducing both
+   previously-fixed bugs. Caught immediately by the new live security
+   tests; fixed in `0016_fix_accept_invitation_ambiguous_column_regression.sql`.
+2. `contribution_records`' RLS (Phase 3) was never extended to
+   `loan_officer`, but `loan_officer` has the `view_reports` capability
+   — so the group financial overview would have silently shown
+   RLS-truncated contribution totals to that role as if they were the
+   complete group figures. Fixed by gating the overview specifically to
+   the roles `contribution_records`' RLS actually covers
+   (owner/administrator/treasurer/auditor), both on the page and in the
+   export route handler, rather than the broader capability.
+
+**Deferred, not part of this phase's scope**: document management
+against Supabase Storage (present in the original one-line roadmap
+bullet, but not part of the detailed Phase 8 spec actually approved —
+treated as an intentional deferral rather than an oversight; revisit
+only with an explicit decision).
 
 ## Phase 9 — Production security, testing and launch
 
