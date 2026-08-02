@@ -17,9 +17,13 @@ deployment is created or changed.
    project.** Do not reuse the existing WealthCircle Supabase project.
    Do not use the unrelated "Courage Website" Supabase project under
    any circumstances.
-2. **Git branch: `staging`** — gives Vercel a stable Preview alias
-   across redeploys, so the Supabase Redirect URL entry only needs
-   adding once.
+2. **Git branch: `staging`**, additionally set as Vercel's **Production
+   Branch** (Project Settings → Git) instead of the repo's default
+   `main` — decided during setup so the staging deployment gets a
+   stable URL across redeploys (rather than a fresh Preview URL each
+   time) and so its environment variables use Vercel's Production
+   scope. `main` no longer auto-deploys as a result. No custom domain
+   is attached regardless — see "What NOT to do yet" below.
 3. **Scheduler endpoint: tested in staging only**, using synthetic test
    data and the Mailtrap sandbox. It must never send email to a real
    user — Mailtrap is a closed sandbox by construction, and no real
@@ -74,9 +78,9 @@ deployment is created or changed.
 
 ## Part B. Environment variables (Vercel dashboard → Project → Settings → Environment Variables)
 
-10. Set the following for the **Preview** environment only (leave
-    Production environment variables unset until actually ready for
-    that):
+10. Set the following for the **Production** environment scope (since
+    `staging` is now Vercel's Production Branch — see decision #2 —
+    these are the vars that apply to the staging deployment itself):
     - `NEXT_PUBLIC_SUPABASE_URL` — the **new staging project's** URL
     - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — the **new staging
       project's** publishable key
@@ -123,12 +127,14 @@ deployment is created or changed.
 
 ## What NOT to do yet
 
-- No custom domain.
-- No Production-scoped environment variables.
-- No Vercel Cron configuration — it can't fire on Preview deployments
-  regardless (a Vercel platform constraint, not a choice), and the
-  scheduler route only exports `POST` today, not the `GET` Vercel Cron
-  requires.
+- No custom domain, even though `staging` is technically Vercel's
+  Production Branch now — that labeling is about env var scope and URL
+  stability, not an intent to go live for real users.
+- No Vercel Cron configuration yet. Now that `staging` is the
+  Production Branch, Vercel Cron *could* technically fire against it —
+  but the scheduler route only exports `POST` today, not the `GET`
+  Vercel Cron requires, so it still wouldn't work without a code change
+  first, and none is planned as part of this checklist.
 - No real email provider — Mailtrap only.
 - No real users, real groups, or real financial records in the staging
   project, ever.
