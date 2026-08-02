@@ -467,6 +467,80 @@ policy — `categorizeAuditAction()` in `src/lib/data/audit-summary.ts`
 derives the "domain" filter from the existing `action` string, no new
 column).
 
+## Production hardening (Phase 9)
+
+Adds `supabase/migrations/0017_phase9_rate_limiting.sql` (one new
+table, one new `SECURITY DEFINER` function). Every other Phase 9 change
+is application code, config, or documentation — no other schema
+changes.
+
+**Security headers and CSP** live entirely in `next.config.ts`'s
+`headers()` function — a static, no-nonce Content-Security-Policy plus
+the standard hardening headers (HSTS, X-Content-Type-Options,
+X-Frame-Options, Referrer-Policy, Permissions-Policy) applied to every
+route. Static rather than nonce-based deliberately: nonces would need
+setting per-request in `src/proxy.ts` (Next 16 renamed Middleware to
+Proxy — see its own docs under `node_modules/next/dist/docs/`) and
+force full dynamic rendering everywhere, costing the marketing route
+group its static optimization for an app that loads no third-party
+scripts.
+
+**Rate limiting** (`src/lib/rate-limit.ts`) wraps the new
+`check_rate_limit()` RPC — a fixed-window counter keyed by a
+caller-supplied string (`invite:<actor>:<group>`, `export:<user>`,
+`preview:<ip>`), atomic under concurrency via the table's primary key.
+Wired into invitation creation
+(`src/lib/actions/invitations.ts`), the CSV export route
+(`.../reports/export/route.ts`), and the pre-auth invitation-preview
+page (`src/app/(auth)/invitations/[token]/page.tsx`, keyed by IP since
+no session exists yet). Fails open by default (including automatically
+whenever the migration itself isn't deployed to a given environment
+yet, detected via a `PGRST202` "function not found" response) — the
+one exception is the invitation-preview path, which fails closed, since
+that's the actual token-guessing-adjacent surface.
+
+**Scheduled jobs**: `src/app/api/scheduler/run/route.ts` (the first
+file under `src/app/api/`, which didn't exist before this phase) calls
+the five reminder/expiry functions from Phase 8 plus a notification-
+email flush, gated by a `SCHEDULER_SECRET` bearer token compared with
+`crypto.timingSafeEqual`. It signs in as a dedicated, unprivileged
+Supabase Auth account (`SCHEDULER_SUPABASE_EMAIL`/`_PASSWORD`, no group
+memberships) rather than using `SUPABASE_SECRET_KEY` — see
+[security-boundaries.md](./security-boundaries.md#production-hardening-phase-9)
+for why. The email-flush loop itself was extracted from
+`src/lib/actions/notifications.ts` into `src/lib/notifications/flush.ts`
+(a plain module, no `"use server"`) so both the existing Server Action
+and this new route share one implementation. The actual cron/scheduler
+trigger mechanism is a deployment decision, not code — see
+`docs/phase-9-deployment-checklist.md`.
+
+**Email** (`src/lib/email/mailer.ts`) is now generic SMTP
+(`EMAIL_SMTP_*`, renamed from `MAILTRAP_*`) — the implementation never
+had a Mailtrap-specific code path, only the variable names changed.
+
+**Logging** (`src/lib/logger.ts`) is the first structured
+error-visibility mechanism in this codebase — a thin, deliberately
+minimal wrapper with an `reportError()` seam that's a no-op until an
+error-reporting vendor is chosen.
+
+**CI**: `.github/workflows/ci.yml` — typecheck/lint/build/unit tests on
+every push/PR with zero live credentials required (`env.ts`'s schema
+stays fully optional, always — see below for why that matters here);
+the live security-test job is `workflow_dispatch`-only pending a
+dedicated non-production Supabase project.
+
+**Environment validation**: `src/lib/env.ts` gained the Phase 9 vars as
+optional fields, same graceful-degradation pattern as everything else
+in that file — deliberately *not* a build-time-enforced "required in
+production" check, because `next build` always runs with
+`NODE_ENV=production` set internally regardless of actual deploy
+target, so gating on that inside a module every page imports would
+break every build (including CI's credential-free job) rather than
+only real deployments. Enforcement instead lives in
+`scripts/check-production-env.mjs`, a standalone script a deployment
+pipeline runs explicitly as its own step — see
+`docs/phase-9-deployment-checklist.md`.
+
 ## Supabase-ready architecture (still works with zero credentials)
 
 Even though a real Supabase project is now connected for Phase 2, every

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: typecheck, lint, build, unit tests
+    runs-on: ubuntu-latest
+    # Needs no Supabase credentials at all — src/lib/env.ts's schema is
+    # fully optional in non-production environments and
+    # isSupabaseConfigured gracefully degrades, so this job is safe to
+    # run on every push/PR from any fork with zero secret exposure.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test
+      # Warn-only for now (not gating the build) — a deliberate
+      # starting point, not a permanent policy; tighten once the
+      # project has a process for triaging findings.
+      - run: npm audit --audit-level=high || true
+
+  # DO NOT wire this job to run automatically until a dedicated,
+  # non-production Supabase project has been provisioned and approved
+  # for CI use, with its own credentials stored as separate GitHub
+  # Actions secrets from any production configuration. This suite
+  # (tests/security/*.test.ts) creates and deletes real rows, including
+  # real Supabase Auth users via the admin API — it must never point at
+  # a production project, even though it cleans up after itself, since
+  # an interrupted run can leave residue (see tests/security/README.md
+  # and docs/phase-8-smoke-test.md's account of exactly this happening
+  # during manual testing). Left as workflow_dispatch-only (manual
+  # trigger) until that project exists and its secrets are wired below
+  # as TEST_SUPABASE_URL / TEST_SUPABASE_PUBLISHABLE_KEY /
+  # TEST_SUPABASE_SECRET_KEY repository secrets.
+  security-tests:
+    name: live security tests (manual trigger only — see comment above)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:security
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.TEST_SUPABASE_SECRET_KEY }}

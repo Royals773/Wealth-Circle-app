@@ -18,8 +18,14 @@ so it can change later without disrupting the underlying product.
 ## The financial boundary
 
 This is the single most important constraint on the product, and it holds
-for the entire Phase 1–7 roadmap unless a future phase explicitly revisits
-it with the user's approval:
+for every phase of the roadmap unless a future phase explicitly revisits
+it with the user's approval. It is also the reason lending-adjacent
+regulatory review (see
+[legal-regulatory-review.md](./legal-regulatory-review.md)) is a
+separate question from whether WealthCircle itself is a regulated
+payments/deposit institution — it is not, by design — but does not by
+itself resolve whether the *lending activity being recorded* requires
+permissions on the part of a group or the platform operator:
 
 WealthCircle is a **software-only management system**. It does **not**:
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { AlertCircle } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { RegisterForInvitationForm } from "@/components/auth/register-for-invitation-form";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type { GroupRole } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "Accept invitation" };
@@ -24,10 +26,20 @@ interface InvitationPreview {
 type InvitationPreviewResult =
   | { status: "not_configured" }
   | { status: "not_found" }
+  | { status: "rate_limited" }
   | { status: "found"; data: InvitationPreview };
 
 async function loadInvitationPreview(token: string): Promise<InvitationPreviewResult> {
   if (!isSupabaseConfigured) return { status: "not_configured" };
+
+  // Unauthenticated, token-guessing-adjacent surface — fails CLOSED on
+  // unexpected errors (unlike every other rate-limited surface in this
+  // app), but still fails open automatically if migration 0017 simply
+  // hasn't been deployed yet (PGRST202) — see src/lib/rate-limit.ts.
+  const requestHeaders = await headers();
+  const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const withinLimit = await checkRateLimit({ key: `preview:${ip}`, windowSeconds: 300, max: 20 }, { failClosed: true });
+  if (!withinLimit) return { status: "rate_limited" };
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_invitation_preview", { p_token: token });
@@ -63,6 +75,22 @@ export default async function AcceptInvitationPage({
           <AlertDescription>
             Invitations aren&apos;t available in this preview yet — Supabase credentials
             haven&apos;t been configured.
+          </AlertDescription>
+        </Alert>
+        <Button asChild className="mt-6 w-full" variant="outline">
+          <Link href="/">Back to home</Link>
+        </Button>
+      </AuthShell>
+    );
+  }
+
+  if (preview.status === "rate_limited") {
+    return (
+      <AuthShell title="Too many attempts" description="Please slow down.">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Too many invitation checks from your network recently. Please try again in a few minutes.
           </AlertDescription>
         </Alert>
         <Button asChild className="mt-6 w-full" variant="outline">

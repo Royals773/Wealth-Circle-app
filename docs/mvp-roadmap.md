@@ -482,13 +482,78 @@ bullet, but not part of the detailed Phase 8 spec actually approved —
 treated as an intentional deferral rather than an oversight; revisit
 only with an explicit decision).
 
-## Phase 9 — Production security, testing and launch
+## Phase 9 — Production hardening *(code complete; migration application, manual walkthrough, and several vendor decisions still pending — see [phase-9-smoke-test.md](./phase-9-smoke-test.md))*
 
-- Full RLS policy review and penetration-style testing of tenant isolation
-- Rate limiting, dependency/security scanning, CI hardening
-- Expanded automated test coverage (integration + end-to-end)
-- Accessibility audit beyond the Phase 1 spot checks
-- Real pricing, billing integration decisions, and production deployment
+- Closed the one open item carried from Phase 8: the officer-for-another-member
+  statement export turned out to already work correctly — the real gap was
+  that `report_export_generated` audit rows never recorded *which* member a
+  statement was about, only who ran the export. Fixed by carrying
+  `subject_member_id`/`subject_member_name` in the row's metadata for the
+  statement branch specifically (`.../reports/export/route.ts`).
+- **Scheduled jobs**: `/api/scheduler/run`, a bearer-secret-gated endpoint
+  that calls the five idempotent reminder/expiry functions from Phase 8
+  plus a notification-email flush — see
+  [security-boundaries.md](./security-boundaries.md#production-hardening-phase-9)
+  for the auth pattern (a dedicated, unprivileged Supabase Auth account, not
+  `SUPABASE_SECRET_KEY`). The actual trigger mechanism (GitHub Actions
+  cron / Vercel Cron / `pg_cron` / external scheduler) is a deployment
+  decision, not made in code.
+- **Email provider**: `MAILTRAP_*` renamed to generic `EMAIL_SMTP_*` —
+  the code was already provider-agnostic (plain SMTP via nodemailer);
+  only the variable names changed. Mailtrap remains the recommended
+  *development* value; production needs a real transactional provider,
+  a separate, cost-driven decision.
+- **Rate limiting**: a Postgres-backed fixed-window limiter
+  (`check_rate_limit()`, `0017_phase9_rate_limiting.sql`) covering
+  invitation creation, the pre-auth invitation-preview flow, and CSV
+  export — the surfaces that had no protection before this phase.
+- **Security headers and CSP**: `next.config.ts` now sets a static CSP
+  plus the standard hardening headers (HSTS, X-Frame-Options,
+  X-Content-Type-Options, Referrer-Policy, Permissions-Policy) on every
+  route.
+- **CSRF/session review**: confirmed, not changed — Server Actions
+  already have Next's built-in Origin/Host CSRF check on by default,
+  unoverridden; session cookie settings are `@supabase/ssr` defaults,
+  also unoverridden.
+- **Environment validation**: the new Phase 9 vars follow `src/lib/env.ts`'s
+  existing fully-optional pattern (kept that way deliberately, since
+  `next build` always runs with `NODE_ENV=production` internally
+  regardless of deploy target — enforcing "required in production"
+  inside that shared module would break every build, not just real
+  deployments). A standalone `scripts/check-production-env.mjs`
+  (`npm run check:production-env`) does that enforcement instead, run
+  explicitly as a deployment-pipeline step.
+- **CI**: `.github/workflows/ci.yml` — typecheck/lint/build/unit tests
+  plus `npm audit` (warn-only) on every push/PR, needing no live
+  credentials. The live security-test job is `workflow_dispatch`-only
+  until a dedicated non-production Supabase project is approved for
+  CI use.
+- **Logging**: `src/lib/logger.ts` — the first error-visibility
+  mechanism of any kind in this codebase; an error-reporting vendor
+  hook exists but is a no-op until one is chosen.
+- **Documentation deliverables**: `phase-9-backup-recovery.md`
+  (Supabase backup/PITR options + a manual recovery-drill procedure),
+  `phase-9-deployment-checklist.md` (vendor-agnostic staging/production
+  checklists), and `legal-regulatory-review.md` (see restrictions
+  below).
+
+**Deliberately not done this phase, documented as known gaps** (see
+[security-boundaries.md](./security-boundaries.md#production-hardening-phase-9)):
+the five scheduled-job RPCs don't yet check caller identity internally
+(low severity — each is idempotent and exposes only a count); edge/CDN-level
+rate limiting isn't implemented (the Postgres-backed limiter is
+right-sized for MVP traffic, not abuse-at-scale); no error-reporting
+vendor is wired yet. **Document management** against Supabase Storage
+remains deferred from Phase 8, unchanged — still requires an explicit
+product-owner decision to pick back up.
+
+**Decisions still needed from the product owner before the rest of this
+phase can go live** (none made or assumed here — see
+[phase-9-deployment-checklist.md](./phase-9-deployment-checklist.md)):
+email provider + sender domain, scheduler trigger mechanism + run
+frequency, hosting platform for staging/production, error-reporting
+vendor, database backup/PITR tier, a dedicated non-production Supabase
+project for CI, and Supabase session/refresh-token lifetime policy.
 
 ## Explicit restrictions (hold for every phase unless revisited with the user)
 
@@ -501,3 +566,11 @@ authorisation, claims of deposit protection, fake testimonials,
 hard-coded users, hard-coded financial transactions, hidden administrator
 access, and production payment functionality of any kind. See
 [product-brief.md](./product-brief.md) for the reasoning.
+
+**Additional, explicit launch blocker (Phase 9):** a qualified UK
+legal/regulatory opinion on the loan feature (FCA consumer credit
+considerations) is required and has **not yet been obtained** — see
+[legal-regulatory-review.md](./legal-regulatory-review.md). No group
+should use lending functionality with real money and real members until
+that review is complete, regardless of how much of the rest of Phase
+9's technical checklist is finished.

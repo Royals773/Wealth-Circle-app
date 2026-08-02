@@ -230,4 +230,36 @@ describe.skipIf(!isConfigured)("reports (live)", () => {
       .eq("action", "report_export_generated");
     expect(asMember ?? []).toEqual([]);
   });
+
+  it("a member_statement export audit entry carries which member it was for, distinguishable from who ran it (Phase 9 fix)", async () => {
+    // Mirrors what the export route's streamCsv() now writes: an
+    // officer (treasurer) exporting the member's statement should
+    // produce a row whose actor_id is the officer but whose metadata
+    // names the subject member — previously this was unrecoverable
+    // from the audit log (metadata only ever held report_type).
+    await adminClient.from("audit_logs").insert({
+      group_id: groupId,
+      actor_id: treasurerId,
+      action: "report_export_generated",
+      entity_type: "report",
+      entity_id: null,
+      metadata: {
+        report_type: "member_statement",
+        subject_member_id: memberId,
+        subject_member_name: "Report Test Member",
+      },
+    });
+
+    const { data } = await ownerClient
+      .from("audit_logs")
+      .select("actor_id, metadata")
+      .eq("group_id", groupId)
+      .eq("action", "report_export_generated")
+      .eq("metadata->>report_type", "member_statement")
+      .single();
+
+    expect(data?.actor_id).toBe(treasurerId);
+    expect(data?.metadata?.subject_member_id).toBe(memberId);
+    expect(data?.actor_id).not.toBe(data?.metadata?.subject_member_id);
+  });
 });

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
 import { roleHasCapability } from "@/lib/permissions";
 import { toCsv, type CsvTable } from "@/lib/csv";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { loadGroupFinancialOverview, loadArrearsReport, loadReconciliationExceptions } from "@/lib/data/reports-summary";
 import { loadMemberStatement } from "@/lib/data/member-statement";
 import { loadMemberDirectory } from "@/lib/data/member-directory";
@@ -37,6 +38,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // Fails open on any error, including the migration not being deployed
+  // yet — see src/lib/rate-limit.ts. Generous limit: this guards against
+  // scrape/DoS-by-repeated-generation, not normal report-checking use.
+  const withinLimit = await checkRateLimit({ key: `export:${user.id}`, windowSeconds: 300, max: 30 });
+  if (!withinLimit) {
+    return NextResponse.json({ error: "Too many exports requested. Please try again in a few minutes." }, { status: 429 });
   }
 
   const currentRole = await getCurrentMembershipRole(groupId);
@@ -74,7 +83,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       Member: statement.memberName,
       Period: `${statement.periodStart} to ${statement.periodEnd}`,
       "Generated at": statement.generatedAt,
-    }, groupId, user.id, "member_statement");
+    }, groupId, user.id, "member_statement", {
+      subject_member_id: statement.memberId,
+      subject_member_name: statement.memberName,
+    });
   }
 
   const canViewReports = currentRole !== null && roleHasCapability(currentRole, "view_reports");
@@ -169,6 +181,7 @@ async function streamCsv(
   groupId: string,
   actorId: string,
   reportType: string,
+  auditMetadata: Record<string, string> = {},
 ): Promise<NextResponse> {
   const { csv } = toCsv(table, metadata);
 
@@ -179,7 +192,7 @@ async function streamCsv(
     action: "report_export_generated",
     entity_type: "report",
     entity_id: null,
-    metadata: { report_type: reportType },
+    metadata: { report_type: reportType, ...auditMetadata },
   });
 
   return new NextResponse(csv, {

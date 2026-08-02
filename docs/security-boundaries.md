@@ -771,10 +771,112 @@ None of these bugs allowed unauthorized access — all were
 denial-of-legitimate-access failures (the opposite failure mode from a
 security hole), each caught before it could affect a real user.
 
+## Production hardening (Phase 9)
+
+**CSRF.** Every mutation in the app goes through Next.js Server Actions
+(never a custom fetch/form-POST to a hand-rolled API route), which have
+Origin-vs-Host same-origin checking on by default — confirmed
+unoverridden (`experimental.serverActions.allowedOrigins` unset in
+`next.config.ts`). The one new HTTP endpoint this phase adds
+(`/api/scheduler/run`) is deliberately *not* browser-invoked — it's a
+machine-to-machine call authenticated by a bearer secret — so CSRF
+doesn't apply to it; the relevant protection there is the secret
+comparison, done with `crypto.timingSafeEqual` to avoid a timing side
+channel, not same-origin checking.
+
+**Session cookies.** `@supabase/ssr`'s default cookie settings
+(httpOnly, secure in production, `sameSite=lax`) are unoverridden
+anywhere in `src/lib/supabase/`. Session/refresh-token lifetime and
+rotation policy are Supabase project (Dashboard) settings, not
+application code — a UX-vs-exposure trade-off for whoever operates the
+project to set, not something this codebase decides.
+
+**Security headers and CSP.** `next.config.ts` now sets
+`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`,
+`Referrer-Policy`, `Permissions-Policy`, and a static (no-nonce)
+Content-Security-Policy on every route. Static rather than nonce-based
+deliberately: nonces require setting them per-request in `src/proxy.ts`
+(Next 16's renamed middleware) and force full dynamic rendering on every
+matched page, which would cost the marketing route group its static
+optimization for no real benefit — the app loads no third-party scripts.
+`style-src` needs `'unsafe-inline'` for Tailwind/Next's inline critical
+CSS; nothing else does.
+
+**Rate limiting.** A Postgres-backed fixed-window limiter
+(`check_rate_limit()`, `supabase/migrations/0017_phase9_rate_limiting.sql`)
+covers the surfaces that had no protection: invitation creation, the
+pre-auth invitation-preview/accept flow (rate-limited by IP, since no
+session exists yet), and CSV export. Deliberately Postgres, not a new
+Redis/Upstash-style service — right-sized for MVP traffic, and follows
+the same narrowly-scoped-`SECURITY DEFINER`-function pattern as every
+other privileged operation in this app rather than adding new paid
+infrastructure. `src/lib/rate-limit.ts` fails **open** by default on any
+unexpected error (availability matters more than a missed check for
+most gated actions) and always fails open specifically when the
+function itself isn't deployed yet (`PGRST202`) — the one exception is
+the invitation-preview path, which fails **closed**, since that's the
+actual credential-adjacent, token-guessing surface. Supabase Auth's own
+sign-in/sign-up/password-reset endpoints have their own separate,
+opaque-to-this-codebase rate limits and are out of scope here.
+Edge/CDN-level rate limiting (Cloudflare, a host's built-in edge
+limiting) is a future escalation if real abuse appears — not needed for
+MVP launch.
+
+**Scheduled jobs.** The five reminder/expiry functions from Phase 8
+(`send_overdue_contribution_reminders`, `send_overdue_repayment_reminders`,
+`send_governance_deadline_reminders`, `expire_stale_invitations`,
+`expire_stale_ownership_transfers`) are now callable via
+`/api/scheduler/run`, gated by a `SCHEDULER_SECRET` bearer token — a
+dedicated shared secret, distinct from and no more powerful than
+`SUPABASE_SECRET_KEY`, since it only gates one HTTP call, not database
+access. The endpoint itself signs in as an ordinary, unprivileged
+Supabase Auth account (no group memberships) to call the existing
+`authenticated`-granted RPCs, the same "narrow function, not an elevated
+bypass key" pattern as every other privileged operation described
+throughout this document — `SUPABASE_SECRET_KEY` still never appears
+anywhere under `src/`. **Known, accepted gap:** none of the five
+functions currently check caller identity internally (no `auth.uid()`
+reference), so any authenticated session — not just the scheduler
+account — can invoke them today. Left as-is deliberately: each call is
+idempotent (`create_notification()`'s `dedupe_key` unique index makes a
+duplicate call a no-op), returns only an integer count, and exposes no
+data beyond that count. Worth closing with an internal caller check in
+a fast-follow migration once the scheduler account actually exists (it
+must be provisioned via the Supabase Dashboard, which this codebase
+cannot do), but the severity does not justify blocking Phase 9 on it.
+
+**Email delivery.** `src/lib/email/mailer.ts` is now provider-agnostic
+generic SMTP (`EMAIL_SMTP_*`, renamed from `MAILTRAP_*`) rather than a
+Mailtrap-specific code path — Mailtrap remains the recommended
+*development* sandbox value for these variables, but the code makes no
+distinction; production must point them at a real transactional
+provider's credentials, a deliberate, separately-approved decision (see
+`docs/phase-9-deployment-checklist.md`), never Mailtrap's sandbox.
+
+**Logging.** `src/lib/logger.ts` is the first error-visibility mechanism
+of any kind in this codebase (previously: zero `console.error` calls
+anywhere in `src/`). Structured, minimal, and deliberately disciplined
+against becoming an unreviewed second copy of financial/PII data
+outside `audit_logs`' already-RLS-reviewed boundary — never raw
+amounts, a full name plus financial history together, or a token/secret
+in the same call. Its `reportError()` seam is a no-op until a real
+error-reporting vendor is chosen (see `docs/phase-9-deployment-checklist.md`).
+
+**CI.** `.github/workflows/ci.yml` now runs typecheck/lint/build/unit
+tests plus `npm audit` (warn-only for now) on every push/PR, needing no
+Supabase credentials at all. The live security-test job is deliberately
+left `workflow_dispatch`-only (manual trigger) until a dedicated,
+non-production Supabase project is provisioned and approved for CI use
+— it must never run against production, since it creates and deletes
+real rows including real Supabase Auth users via the admin API, and an
+interrupted run can leave residue (exactly this happened once during
+this project's own manual Phase 8 testing — see
+`docs/phase-8-smoke-test.md`).
+
 ## What this phase does not yet include
 
-Rate limiting, CSRF-specific hardening beyond Next.js/Supabase defaults,
-and dependency/security scanning in CI are still out of scope. See
-"Remaining risks or limitations" in the Phase 2 completion report for the
-current, specific list — including any Supabase Security Advisor findings
-from the live project.
+Edge/CDN-level rate limiting, the internal-caller check on the five
+scheduled-job RPCs (see above), and a chosen/configured error-reporting
+vendor are still open. See "Remaining risks or limitations" in the
+Phase 2 completion report for the original, broader list — including
+any Supabase Security Advisor findings from the live project.

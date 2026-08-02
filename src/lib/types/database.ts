@@ -395,6 +395,7 @@ export interface Database {
       send_governance_deadline_reminders: Fn<{ p_now: string }, number>;
       expire_stale_invitations: Fn<{ p_now: string }, number>;
       expire_stale_ownership_transfers: Fn<{ p_now: string }, number>;
+      check_rate_limit: Fn<{ p_key: string; p_window_seconds: number; p_max: number }, boolean>;
     };
     Tables: {
       profiles: Table<

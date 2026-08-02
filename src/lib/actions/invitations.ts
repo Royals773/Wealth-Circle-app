@@ -8,6 +8,7 @@ import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
 import { getAppUrl } from "@/lib/env";
 import { initialInviteSchema } from "@/lib/validations/group";
 import type { AuthActionState } from "@/lib/actions/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export interface InvitationActionState {
   status: "idle" | "error" | "success";
@@ -44,6 +45,18 @@ export async function createInvitationAction(
   }
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    // Fails open on any error, including the migration not being
+    // deployed yet — see src/lib/rate-limit.ts.
+    const allowed = await checkRateLimit({ key: `invite:${user.id}:${groupId}`, windowSeconds: 3600, max: 20 });
+    if (!allowed) {
+      return { status: "error", formError: "Too many invitations sent recently. Please try again in a while." };
+    }
+  }
+
   const { data, error } = await supabase.rpc("create_invitation", {
     p_group_id: groupId,
     p_email: parsed.data.email,

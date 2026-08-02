@@ -7,8 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:security": "vitest run --config vitest.security.config.ts"
+    "test:security": "vitest run --config vitest.security.config.ts",
+    "check:production-env": "node scripts/check-production-env.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

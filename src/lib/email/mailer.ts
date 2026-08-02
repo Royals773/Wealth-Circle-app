@@ -1,16 +1,19 @@
 import nodemailer from "nodemailer";
 import { env } from "@/lib/env";
 import { renderNotificationEmail } from "@/lib/email/templates";
+import { logger } from "@/lib/logger";
 
 /**
- * Mailtrap SMTP only — development email sandbox, never a production
- * provider (see docs/security-boundaries.md). Every notification email
- * send is a safe no-op when unset, mirroring isSupabaseConfigured: the
- * in-app notification always exists regardless of whether email is
- * configured or delivery succeeds.
+ * Generic SMTP relay via nodemailer — Mailtrap's sandbox in development,
+ * a real transactional provider in production (see
+ * docs/security-boundaries.md; provider choice is a deliberate,
+ * separately-approved decision, not made by this file). Every
+ * notification email send is a safe no-op when unset, mirroring
+ * isSupabaseConfigured: the in-app notification always exists
+ * regardless of whether email is configured or delivery succeeds.
  */
 export const isEmailConfigured = Boolean(
-  env.MAILTRAP_HOST && env.MAILTRAP_PORT && env.MAILTRAP_USER && env.MAILTRAP_PASS && env.MAILTRAP_FROM_EMAIL,
+  env.EMAIL_SMTP_HOST && env.EMAIL_SMTP_PORT && env.EMAIL_SMTP_USER && env.EMAIL_SMTP_PASS && env.EMAIL_SMTP_FROM_EMAIL,
 );
 
 let cachedTransport: ReturnType<typeof nodemailer.createTransport> | null = null;
@@ -19,9 +22,9 @@ function getTransport() {
   if (!isEmailConfigured) return null;
   if (!cachedTransport) {
     cachedTransport = nodemailer.createTransport({
-      host: env.MAILTRAP_HOST,
-      port: env.MAILTRAP_PORT,
-      auth: { user: env.MAILTRAP_USER, pass: env.MAILTRAP_PASS },
+      host: env.EMAIL_SMTP_HOST,
+      port: env.EMAIL_SMTP_PORT,
+      auth: { user: env.EMAIL_SMTP_USER, pass: env.EMAIL_SMTP_PASS },
     });
   }
   return cachedTransport;
@@ -48,7 +51,7 @@ export async function sendNotificationEmail({ to, title, actionUrl }: SendNotifi
 
   try {
     await transport.sendMail({
-      from: env.MAILTRAP_FROM_EMAIL,
+      from: env.EMAIL_SMTP_FROM_EMAIL,
       to,
       subject,
       text,
@@ -56,6 +59,12 @@ export async function sendNotificationEmail({ to, title, actionUrl }: SendNotifi
     });
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Unknown email delivery error" };
+    const message = error instanceof Error ? error.message : "Unknown email delivery error";
+    // Deliberately no recipient address or subject in this log line —
+    // the failure is already durably recorded per-notification in
+    // notifications.email_error by the caller; this is just for
+    // real-time ops visibility, not a second copy of who-got-what.
+    logger.warn("Notification email delivery failed", { error: message });
+    return { ok: false, error: message };
   }
 }

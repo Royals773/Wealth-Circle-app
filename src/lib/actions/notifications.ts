@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isSupabaseConfigured, getAppUrl } from "@/lib/env";
+import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
-import { sendNotificationEmail } from "@/lib/email/mailer";
+import { flushPendingNotificationEmailsWith } from "@/lib/notifications/flush";
 import type { NotificationCategory } from "@/lib/types/database";
 
 /** Categories that always email regardless of preference — mirrors the
@@ -79,22 +79,5 @@ export async function flushPendingNotificationEmails(): Promise<void> {
   if (!isSupabaseConfigured) return;
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("claim_pending_notification_emails", { p_limit: 10 });
-  if (error || !data) return;
-
-  const appUrl = getAppUrl();
-
-  for (const item of data) {
-    const result = await sendNotificationEmail({
-      to: item.recipient_email,
-      title: item.subject,
-      actionUrl: `${appUrl}${item.action_path}`,
-    });
-
-    await supabase.rpc("mark_notification_email_result", {
-      p_notification_id: item.notification_id,
-      p_status: result.ok ? "sent" : "failed",
-      p_error: result.error ?? null,
-    });
-  }
+  await flushPendingNotificationEmailsWith(supabase);
 }
