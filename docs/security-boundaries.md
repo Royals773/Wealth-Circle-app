@@ -799,8 +799,26 @@ deliberately: nonces require setting them per-request in `src/proxy.ts`
 (Next 16's renamed middleware) and force full dynamic rendering on every
 matched page, which would cost the marketing route group its static
 optimization for no real benefit — the app loads no third-party scripts.
-`style-src` needs `'unsafe-inline'` for Tailwind/Next's inline critical
-CSS; nothing else does.
+Both `script-src` and `style-src` need `'unsafe-inline'` — this is
+Next.js's own documented default for apps not using nonces (see
+`node_modules/next/dist/docs/.../content-security-policy.md`, "Without
+Nonces"). **A real bug found during staging deployment testing**: an
+earlier version of this CSP omitted `'unsafe-inline'` from `script-src`
+specifically, on the (wrong) assumption that only app-authored inline
+scripts mattered and this app ships none. In fact Next.js's own
+framework bootstrap (RSC payload streaming, hydration data) injects
+inline `<script>` tags on every page load regardless of app code —
+without `'unsafe-inline'` in `script-src`, the browser silently blocked
+those, breaking React hydration app-wide. Every client component
+stopped responding to interaction (confirmed via direct, automated
+browser testing: a Radix Checkbox's `data-state` never changed from
+`"unchecked"` after a real click), with zero build-time signal that
+anything was wrong — `next build` succeeds either way, since CSP is a
+runtime browser enforcement, not a build-time check. Nonce-based or
+experimental SRI-based CSP remain available as stricter future upgrades
+if ever wanted (see the Next.js CSP guide's "Without Nonces" vs.
+"Nonces" vs. "Subresource Integrity" sections), at the cost of forcing
+dynamic rendering (nonces) or App-Router-only experimental status (SRI).
 
 **Rate limiting.** A Postgres-backed fixed-window limiter
 (`check_rate_limit()`, `supabase/migrations/0017_phase9_rate_limiting.sql`)
