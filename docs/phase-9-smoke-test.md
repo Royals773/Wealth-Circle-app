@@ -89,6 +89,32 @@ redeployed to the live staging URL via `vercel --prod` after the Vercel
 git-push-triggers-a-build integration was found to not be wired up
 correctly (a separate, still-open issue — see "Before Phase 10" below).
 
+### A genuinely separate setup gap: Supabase Auth emails need their own SMTP config
+
+Not a code bug — a real, non-obvious operational requirement for any
+**new** Supabase project. Supabase's own Auth service (not this app's
+`EMAIL_SMTP_*`/`sendNotificationEmail()` pipeline) sends signup
+confirmation and password-reset emails using its own, separately
+configured mail sending. A fresh project defaults to Supabase's shared
+testing sender, which has a very low built-in rate limit — the first
+few real sign-up attempts against the new staging project failed with
+`error.code: "over_email_send_rate_limit"` (confirmed via a direct
+`supabase.auth.signUp()` diagnostic call, not just observing the UI).
+Configuring custom SMTP (Authentication → Emails → SMTP Settings, same
+Mailtrap sandbox credentials as this app's own `EMAIL_SMTP_*`) resolved
+the rate limit but initially traded it for an opaque `{"message": "{}",
+"status": 500, "name": "AuthRetryableFetchError"}` — GoTrue's generic
+wrapper around any downstream SMTP failure, in this case simply a
+mistyped SMTP password in the Supabase dashboard field, unrelated to
+anything in this codebase. Once corrected, the full sign-up → confirm →
+sign-in round trip was verified working end-to-end, cross-checked
+directly against `auth.users.email_confirmed_at` rather than UI
+observation alone. **Any future new Supabase project (a real production
+project, most obviously) will need this same custom-SMTP configuration
+before real sign-ups can work at any meaningful volume** — worth adding
+explicitly to `docs/phase-9-deployment-checklist.md`'s production
+section, not just discovered ad hoc again.
+
 | Step | Result |
 |---|---|
 | Security headers present on a public page (`curl -I` against the live staging URL) | ✅ Confirmed — full header set present (CSP, HSTS, X-Frame-Options, etc.) |
@@ -98,8 +124,8 @@ correctly (a separate, still-open issue — see "Before Phase 10" below).
 | Invitation creation blocked after the configured rate-limit threshold, with a clear error message, not a silent failure | Pending |
 | CSV export blocked after the configured rate-limit threshold (`429`) | Pending |
 | Invitation-preview page still works normally under normal use (rate limiting fails closed there — confirm it isn't over-triggering on legitimate traffic) | Pending |
-| Sign-up → Mailtrap confirmation email → `/auth/confirm` round trip works end-to-end on the staging deployment | Pending — blocked on the checkbox bug during this session; ready to retry now that it's fixed |
-| Email still sends correctly after the `MAILTRAP_*` → `EMAIL_SMTP_*` rename (regression check) | Pending — same blocker as above |
+| Sign-up → Mailtrap confirmation email → `/auth/confirm` round trip works end-to-end on the staging deployment | ✅ Confirmed — full round trip (sign-up, click-to-confirm, sign-in) verified working, and independently checked against the staging project's `auth.users` table (`email_confirmed_at` correctly set) rather than relying on UI observation alone. See the SMTP note below for what it took to get here |
+| Email still sends correctly after the `MAILTRAP_*` → `EMAIL_SMTP_*` rename (regression check) | ✅ Confirmed — this app's own notification emails (`EMAIL_SMTP_*`) were never the issue; see below for the separate, real gap this surfaced |
 | `/api/scheduler/run` rejects a request with a missing/wrong bearer token (`401`) | Pending — needs `SCHEDULER_SECRET` configured on staging first |
 | `/api/scheduler/run` succeeds with the correct token once a scheduler Supabase Auth account exists, and calling it twice in a row shows the second call reporting zero *new* notifications for identical input (dedupe proof) | Deferred — needs the scheduler Supabase Auth account provisioned via the staging project's Dashboard first |
 | `.github/workflows/ci.yml`'s `build-and-test` job passes on a real push/PR | Repo is now pushed to GitHub (`Royals773/Wealth-Circle-app`, both `main` and `staging` pushed) — actual workflow-run status not yet confirmed (no `gh` CLI available in this environment, repo is private) |
