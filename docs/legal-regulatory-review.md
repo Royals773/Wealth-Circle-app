@@ -82,14 +82,15 @@ themselves needing permissions this project has not sought.
    required disclosures, or geofencing to exclude jurisdictions where
    the analysis doesn't hold).
 
-## Open question for the product owner
+## Open question for the product owner — resolved
 
-Should lending functionality be **technically disabled** (a feature
-flag, off by default in production) until this review completes, as an
-extra safeguard beyond "we haven't launched with real users yet" —
-or is the current state (feature exists in the codebase, simply not
-used by any real group yet) sufficient? This document doesn't assume an
-answer; it can be implemented if wanted, but shouldn't be assumed.
+**Decided (Phase 10 planning)**: yes, lending functionality will be
+**technically disabled** via a feature flag, off by default in
+production, until this review is complete and a written opinion is on
+file — not left as "exists in the codebase, simply not used yet."
+Design recorded in [phase-10-planning.md](./phase-10-planning.md);
+implementation is a separate, later gated step, not yet built as of
+this decision being recorded.
 
 ## Launch gate
 
