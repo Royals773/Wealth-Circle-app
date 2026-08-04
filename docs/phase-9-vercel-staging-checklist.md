@@ -75,6 +75,16 @@ deployment is created or changed.
    protection or Vercel Authentication) on Preview deployments — the
    `*.vercel.app` URL is guessable/discoverable, not genuinely private
    on its own. Availability depends on your Vercel plan tier.
+   **Done** — confirmed via a direct unauthenticated `curl` against
+   both a Preview and the current Production-target deployment URL:
+   both return a `302` to `vercel.com/sso-api` before ever reaching the
+   app. Explicit decision: no "Protection Bypass for Automation" secret
+   has been configured, so this protection layer stays fully on,
+   including against this project's own diagnostic tooling — the
+   tradeoff is that header/CSP checks against protected routes must be
+   done via direct browser DevTools inspection (as in
+   `docs/phase-9-smoke-test.md`'s authenticated-dashboard-headers row),
+   not `curl`, unless that's revisited later with explicit approval.
 
 ## Part B. Environment variables (Vercel dashboard → Project → Settings → Environment Variables)
 

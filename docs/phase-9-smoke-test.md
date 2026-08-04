@@ -14,13 +14,13 @@ chat/click confirmation alone — the same discipline applies here.
 - `npx tsc --noEmit` — pass
 - `npm run build` — pass
 - `npx eslint .` — pass
-- `npx vitest run` — 152/152 pass (no new pure-logic unit tests this
-  phase — every Phase 9 change is either infra/config, a thin route
-  handler, or a live-database-backed function, none of which fit this
-  project's existing pure-function unit-test shape)
-- `npm run test:security` — 128/128 pass (127 pre-existing + 1 new: an
-  assertion in `tests/security/reports.test.ts` covering the
-  statement-export audit-metadata fix, item 1). Needed the same
+- `npx vitest run` — 157/157 pass (152 pre-existing + 5 new: the
+  scheduler endpoint's bearer-token gate, `src/app/api/scheduler/run/route.test.ts`
+  — see "Scheduler email capability fix" below for the rest of that
+  work, which needed a live database and so lives in `tests/security`
+  instead)
+- `npm run test:security` — 136/136 pass (128 pre-existing + 8 new,
+  covering the scheduler email capability fix). Needed the same
   cooldown-and-serialize retry as Phase 8's suite for the same
   documented Supabase-project auth rate limit, not a code issue — see
   "Cleanup" below for what that surfaced.
@@ -115,24 +115,112 @@ before real sign-ups can work at any meaningful volume** — worth adding
 explicitly to `docs/phase-9-deployment-checklist.md`'s production
 section, not just discovered ad hoc again.
 
+### Scheduler dedupe proof: a real overdue scenario, and a genuine functional gap it surfaced
+
+Superseding the earlier "trivial, zero-data" dedupe check. A temporary,
+clearly-labelled `contribution_plans` row ("PHASE9-TEST-OVERDUE-PLAN")
+was created on the real "Susu" staging group — weekly frequency,
+`start_date` chosen so the period containing the member's actual
+`joined_at` had already ended by the day of the test — deliberately
+constructed from the exact rules in
+`member_has_overdue_contributions()` (`supabase/migrations/0009_exact_overdue_contribution_eligibility.sql`)
+rather than guessed, and pre-verified true via a direct RPC call before
+touching the scheduler at all.
+
+**Run 1** (`POST /api/scheduler/run` with the correct bearer token)
+returned `overdueContributions: 2` and created exactly one
+`contribution_overdue` notification for the test member (dedupe key
+`overdue_contribution:<member>:<group>:2026-08-04`) — plus one for the
+group's owner, correctly and expectedly, since a contribution plan
+applies to every member of the group, not just the one this test
+targeted, and the owner also had no verified contribution for that
+period. **Run 2**, immediately after with no data changes, returned
+`overdueContributions: 0` and created zero new rows — both original
+notification rows unchanged (same `id`, same `created_at`). Dedupe
+confirmed at the database level exactly as designed, via
+`create_notification()`'s `unique (recipient_id, dedupe_key) where
+dedupe_key is not null` index.
+
+**The real gap:** both runs also returned `emailsSent: 0, emailsFailed:
+0` — not because sending failed, but because `claim_pending_notification_emails()`
+never found anything to claim. Reading its definition (`0015_phase8_reports_notifications_audit.sql`)
+shows why: it only claims a notification if the recipient shares a
+group with the *caller*, a narrowing rule written for the normal
+opportunistic flush path (an ordinary signed-in group member
+triggering it from their own dashboard). The dedicated scheduler
+account is deliberately memberless — a security choice, so it carries
+no group access of its own — which means it can never satisfy that
+"shares a group" condition for *any* group-scoped notification. In its
+current form, the scheduled job can create in-app notifications
+correctly (proven above) but **can never flush their emails** for
+anything group-scoped, which is nearly everything the five reminder
+functions produce. This is a real, previously-undiscovered functional
+gap, not a test artifact — worth its own fix (most likely: a
+scheduler-aware exception in the claim query's narrowing condition,
+analogous to the existing `n2.group_id is null` account-level
+carve-out) before relying on the scheduler for real reminder emails.
+Recorded in "Before Phase 10" below rather than fixed inline, since it
+touches the same security-boundary tradeoff the memberless-scheduler
+design was deliberately built around.
+
+**A mid-test credential-exposure incident, safely contained:** the
+scheduler test account's password was regenerated to fix an unrelated
+sign-in mismatch, and was briefly printed to a local terminal (never
+into this chat) before being recognized as compromised-by-exposure and
+rotated again immediately. The second rotation was done with the new
+value never appearing in any command text, tool output, log, or file
+readable outside the operation itself: generated inside a script that
+never logs it, written directly into `.env.staging.local` (preserving
+every other variable) and into a private scratchpad file outside the
+repository, piped into `vercel env update SCHEDULER_SUPABASE_PASSWORD
+production` via stdin redirection (`< file`, never `--value`), then the
+scratchpad file and the one-off script were deleted immediately after.
+`SCHEDULER_SECRET` (a separate credential) was left untouched
+throughout. The staging deployment was redeployed and its protected
+`-git-staging-` alias re-pointed to pick up the new value — Deployment
+Protection was confirmed still active (SSO redirect) both before and
+after, and no Protection Bypass secret was created at any point.
+
+Test data cleanup: the temporary contribution plan and the two
+notifications it generated were deleted directly by id after the proof
+completed; verified zero leftover rows on `Susu` afterward, and that
+both real memberships (owner, member — both `active`) were untouched
+throughout.
+
 | Step | Result |
 |---|---|
 | Security headers present on a public page (`curl -I` against the live staging URL) | ✅ Confirmed — full header set present (CSP, HSTS, X-Frame-Options, etc.) |
-| Security headers present on an authenticated dashboard page | Pending — not yet checked against a real signed-in session |
-| No CSP console violations across a full click-through | Partially confirmed, and non-trivially so — see the bug account above. Verified via direct browser automation for the sign-up page specifically (now clean, only a benign dev-mode-only React `eval()` warning that's expected and production-safe per Next's own docs). The root cause was a global `script-src` header affecting every page, so it should now be resolved everywhere, but a fuller click-through of authenticated dashboard pages hasn't been separately automated yet |
-| Officer exports another member's statement; confirm the `report_export_generated` audit row now carries `metadata.subject_member_id` matching the selected member, not the officer (item 1 fix) | Pending |
-| Invitation creation blocked after the configured rate-limit threshold, with a clear error message, not a silent failure | Pending |
-| CSV export blocked after the configured rate-limit threshold (`429`) | Pending |
-| Invitation-preview page still works normally under normal use (rate limiting fails closed there — confirm it isn't over-triggering on legitimate traffic) | Pending |
+| Security headers present on an authenticated dashboard page | ✅ Confirmed by direct manual inspection (Safari DevTools, Network tab, the dashboard document request) — not `curl`, since the staging deployment is intentionally gated by Vercel's own SSO/deployment-protection layer (a 302 to `vercel.com/sso-api` before the request ever reaches the app), and no bypass secret was configured for it, by explicit choice, to keep the Preview deployment genuinely private. Response was `200`; headers observed present by name: `Content-Security-Policy`, `Permissions-Policy`, `Referrer-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`. The CSP value itself still contains `'unsafe-inline'` in `script-src`/`style-src`, as documented in `next.config.ts` — a known, accepted tradeoff (required for Next's own inline hydration scripts), not a regression |
+| No CSP console violations across a full click-through | ✅ Confirmed — see the bug account above for the sign-up page (verified via direct browser automation). The authenticated dashboard page was separately checked via direct Safari DevTools inspection and initially found **not** clean: `Refused to load https://vercel.live/_next-live/feedback/feedback.js because it does not appear in the script-src directive...` plus three related resource failures. Diagnosed (confirmed via `grep` across `src/`, `next.config.ts`, and Next.js's own `node_modules` — zero matches for `vercel.live`/`feedback.js` anywhere) as **not** an app or CSP-config bug at all: Vercel's own **Toolbar / Live Feedback** feature injects that script at the edge layer, after our app's response, independent of anything in this codebase. Fixed by disabling the Vercel Toolbar at the project level (both Production and Preview) in the Vercel Dashboard — no CSP change, no `vercel.live` allowance added, no Protection Bypass secret created, consistent with keeping the production CSP strict and Deployment Protection on throughout. Required a fresh deployment plus manually re-pointing the `-git-staging-` alias to it (the existing broken-git-integration issue extends to CLI `--prod` deploys too — see "Before Phase 10" below) before the setting change took visible effect. Re-verified clean via a cache-cleared reload in Safari DevTools after that |
+| Officer exports another member's statement; confirm the `report_export_generated` audit row now carries `metadata.subject_member_id` matching the selected member, not the officer (item 1 fix) | ✅ Confirmed — officer (`wc-staging-test-1`) generated a statement for the other member (`wc-staging-member`) via the Reports page dropdown; downloaded CSV's `Member:` header and every line matched the selected member, not the officer. Independently cross-checked directly against the staging `audit_logs` table: the resulting `report_export_generated` row has `actor_id` set to the officer's id, and `metadata: { report_type: "member_statement", subject_member_id: "<member's id>", subject_member_name: "Staging Test Member" }` — the subject is correctly distinct from the actor |
+| Invitation creation blocked after the configured rate-limit threshold, with a clear error message, not a silent failure | ✅ Confirmed via direct RPC test rather than 20 real invitations (product-owner choice) — `check_rate_limit()` correctly allows calls 1–3 and blocks call 4 with a `max=3` test window on the live staging project; the same function backs both the invitation and CSV-export limiters, just with different keys/thresholds |
+| CSV export blocked after the configured rate-limit threshold (`429`) | ✅ Confirmed by the same underlying mechanism test above — the route handler's `429` response is a thin wrapper around this already-proven function |
+| Invitation-preview page still works normally under normal use (rate limiting fails closed there — confirm it isn't over-triggering on legitimate traffic) | ✅ Confirmed — genuinely exercised via real use, not a synthetic call: setting up a real owner+member test group required clicking through several real `/invitations/[token]` links (including one stale/revoked one and the working one, plus a sign-in-then-redirect-back round trip), all handled correctly by the preview page without any rate-limit error shown. Independently cross-checked directly against the staging `rate_limit_buckets` table: the `preview:<ip>` key's current window shows `count: 1` against the route's `max=20` per-300s threshold — legitimate use came nowhere near triggering the fail-closed limit |
 | Sign-up → Mailtrap confirmation email → `/auth/confirm` round trip works end-to-end on the staging deployment | ✅ Confirmed — full round trip (sign-up, click-to-confirm, sign-in) verified working, and independently checked against the staging project's `auth.users` table (`email_confirmed_at` correctly set) rather than relying on UI observation alone. See the SMTP note below for what it took to get here |
 | Email still sends correctly after the `MAILTRAP_*` → `EMAIL_SMTP_*` rename (regression check) | ✅ Confirmed — this app's own notification emails (`EMAIL_SMTP_*`) were never the issue; see below for the separate, real gap this surfaced |
 | `/api/scheduler/run` rejects a request with a missing/wrong bearer token (`401`) | ✅ Confirmed — `curl` with no `Authorization` header returns `401 {"error":"Unauthorized"}` |
-| `/api/scheduler/run` succeeds with the correct token once a scheduler Supabase Auth account exists, and calling it twice in a row shows the second call reporting zero *new* notifications for identical input (dedupe proof) | Partially confirmed. `curl` with the correct bearer token returns `200` with a clean JSON summary, and a second immediate call also returns `200` with no errors — confirms the endpoint, auth, and Supabase sign-in all work correctly end-to-end. The "zero new notifications" dedupe claim specifically is trivial right now (all counts are `0` because the staging project has no group/financial data yet to generate real reminders against) — a genuine dedupe proof needs test data set up first (see the officer-statement/rate-limiting items below, which need the same group setup) |
+| `/api/scheduler/run` succeeds with the correct token once a scheduler Supabase Auth account exists, and calling it twice in a row shows the second call reporting zero *new* notifications for identical input (dedupe proof) | ✅ Confirmed with a genuine overdue scenario, not a trivial zero-data call — see the full account below, including a real functional gap this surfaced (the scheduler currently can never flush group-scoped notification emails) and a mid-test credential-exposure incident that was safely remediated |
 | `.github/workflows/ci.yml`'s `build-and-test` job passes on a real push/PR | ✅ Confirmed — both `main` and `staging` push-triggered runs show green in the Actions tab |
 | `npm run check:production-env` fails clearly when a required Phase 9 var is missing, and passes once all are set | ✅ Confirmed — tested all three cases (nothing set, `SUPABASE_SECRET_KEY` set as a leak check, everything correctly set) with a clean environment via `env -i` |
 | Migrations `0001`–`0017` apply cleanly in order to a brand-new Supabase project, and RLS behaves identically to the existing project | ✅ Confirmed — see `docs/phase-9-vercel-staging-checklist.md`; 128/128 live security tests pass against the new staging project |
 
 ## Cleanup
+
+Setting up a real owner+member group on staging (`wc-staging-test-1`
+owning "Susu", `wc-staging-member` joining it) produced one stray
+artifact: the member account initially created its own separate group
+("WEALTH MASTERS") instead of accepting an invitation, along with a
+self-directed pending invitation on it. Verified before deletion that
+the group had exactly one membership (the test member itself, as
+owner), zero contributions/loans/withdrawals/governance/document rows,
+and only test-generated audit-log entries — then deleted the `groups`
+row directly against the staging project only (confirmed by project
+ref prefix, distinct from the main project's), which cascaded the
+membership, invitation, and audit rows automatically per their `on
+delete cascade` foreign keys; the one non-cascading `rate_limit_buckets`
+row keyed to that group was deleted separately. Verified zero rows
+remained afterward across all four tables. "Susu" and both accounts'
+legitimate memberships were untouched throughout.
 
 No new test accounts or groups are needed for the parts of this
 walkthrough that don't require staging — the rate-limiting and
@@ -151,6 +239,107 @@ deleting; the two legitimate, persistent fixture-group owners
 `tests/security/loan-eligibility-calendar.test.ts`) were confirmed
 excluded and left untouched.
 
+## Scheduler email capability fix (migration 0018)
+
+Closes the gap found during the earlier dedupe proof: the scheduler
+could create reminder notifications but never flush their emails,
+because `claim_pending_notification_emails()` only claimed a
+notification if its recipient shared a group with the caller — a rule
+that can never be true for the deliberately memberless scheduler
+account.
+
+**Design decision**: a private `scheduler_capabilities` table keyed by
+`auth.uid()`, checked via a new `is_active_scheduler()` `security
+definer` function — the same "narrowly-scoped function over a
+dedicated table" pattern as every other privilege check in this schema
+(`is_group_member()`, `is_group_manager()`, etc.), chosen over a
+JWT/`app_metadata`-based capability specifically because revocation is
+immediate (a live table read on every call) rather than lagging until
+a session's token next refreshes. RLS on the new table has zero
+policies — not even the scheduler account itself can read or write it;
+the only way in is the out-of-band grant below. Full threat model and
+approach comparison were presented and reviewed before implementation.
+
+**What changed**: `claim_pending_notification_emails()` and
+`mark_notification_email_result()` — same signatures, `create or
+replace`, additive `OR is_active_scheduler()` alongside the unchanged
+group-sharing condition. `claim_pending_notification_emails()` also
+gained a 15-minute retry cooldown for rows stuck in `sending` (crashed
+flush) or `failed` (real send error), closing the "abandoned claim"
+gap. A genuinely separate, adjacent bug was found and closed in the
+same migration: `mark_notification_email_result()` previously had *no*
+ownership check at all — any authenticated user could resolve any
+in-flight notification by id. Zero application code changes were
+needed — `route.ts`/`flush.ts` already called these functions with the
+same signatures.
+
+**Applying it required two retries**: the first SQL Editor run reported
+"Success" but independent verification (querying the table/function
+directly) showed neither existed — most likely a partial paste.
+Re-pasting the entire file (idempotent — `create table if not exists`,
+`create or replace function`) resolved it cleanly, confirmed
+independently both times rather than trusting the reported "Success."
+
+**Granting the capability**: done via a plain `insert` into
+`scheduler_capabilities` for the existing `wc-scheduler-staging`
+account's id, run directly in the Supabase SQL Editor by the project
+owner — deliberately not via any script on this side, so the
+service-role key was never touched for this step at all, not just kept
+unprinted.
+
+**Test suite**: 5 pure unit tests (`src/app/api/scheduler/run/route.test.ts`
+— bearer-token gate, no live DB) plus 8 live tests appended to
+`tests/security/notifications.test.ts` covering capability isolation,
+outsider/role-based denial, bounded batch claiming, no direct
+table access to financial/group data, no immediate double-claim,
+cooldown-gated retry, and instant disable/re-enable. One live-suite
+iteration surfaced a real test-isolation bug (not a security bug): two
+denial tests deliberately leave a notification `pending` (nobody was
+entitled to claim it), and since the scheduler's reach isn't scoped to
+one group, a later test's claim swept those up too — fixed by having
+each denial test clean up its own leftover row. A second, minor issue
+(asserting strict FIFO claim order, which `claim_pending_notification_emails()`
+has never actually guaranteed — no tiebreaker on `created_at`, unchanged
+by this fix) was corrected to assert bounding + eventual full coverage
+instead. Final state: **136/136 live security tests pass**, **157/157
+unit tests pass**, typecheck/lint/build all green.
+
+**Mailtrap walkthrough**, run against a fresh, temporary, clearly-labelled
+overdue-contribution plan on the real "Susu" staging group (same
+construction as the earlier dedupe proof), via the local-dev-against-staging
+method (Deployment Protection kept fully on throughout, no bypass
+secret):
+- **Run 1**: `emailsSent: 1, emailsFailed: 1` — one notification
+  genuinely delivered through Mailtrap (`email_status: "sent"`,
+  `email_error: null`); the other hit Mailtrap's own external per-second
+  rate limit (`550 5.7.0 Too many emails per second`), a real,
+  independent constraint already known from earlier in this project, not
+  a bug in the fix.
+- **Run 2**, immediate: `emailsSent: 0, emailsFailed: 0`, zero new
+  notifications, both rows' `email_attempted_at` unchanged — confirms no
+  duplicate claim and no duplicate send.
+- **Retry proof**: the failed row's `email_attempted_at` was backdated
+  20 minutes (service-role only, simulating the cooldown), then a third
+  call correctly reclaimed and successfully sent it
+  (`email_status: "sent"`, error cleared) — the full failed→cooldown→retry→sent
+  path proven through the real HTTP endpoint, not just the RPC layer.
+
+**Credential handling during this work**: the scheduler test account's
+password and `SCHEDULER_SECRET` needed re-rotating mid-walkthrough after
+`.env.staging.local` was found to have silently lost both values (empty
+after an earlier edit) — same secure procedure as established
+previously (generated in a script that never logs the value, written
+directly to `.env.staging.local` and a scratchpad file outside the
+repo, piped into `vercel env update` via stdin redirection, files
+deleted immediately after). Neither value was ever printed, echoed, or
+exposed in chat, a command, or a log.
+
+**Cleanup**: the temporary contribution plan and its two notifications
+were deleted by id and verified gone; "Susu"'s real memberships
+(owner + member, both `active`) and the scheduler's capability grant
+(exactly one row, `is_active: true`) were confirmed unchanged
+throughout.
+
 ## Before Phase 10 (or before real users, whichever comes first)
 
 1. **UK legal and regulatory review of the group lending model** — see
@@ -168,15 +357,25 @@ excluded and left untouched.
    (`vercel --prod`) directly for this session's fixes, but the root
    cause (likely a GitHub App repository-access permission gap) hasn't
    been diagnosed or fixed — worth investigating before relying on
-   push-to-deploy for real work.
+   push-to-deploy for real work. This extends further than previously
+   known: a `vercel --prod` CLI deploy creates a new deployment fine,
+   but does **not** automatically re-point the existing
+   `wealth-circle-app-git-staging-...vercel.app` alias to it (confirmed
+   twice during the Vercel-Toolbar CSP fix above) — `vercel alias set
+   <new-deployment-url> <git-staging-alias>` must be run manually after
+   every CLI deploy until the underlying Git integration is fixed.
 4. The five scheduled-job RPCs don't yet check caller identity
    internally — a known, accepted, low-severity gap (each is
    idempotent and exposes only a count) documented in
    `docs/security-boundaries.md`'s Phase 9 section. Worth closing once
    the scheduler account exists to check against.
-5. Edge/CDN-level rate limiting is not implemented — the current
+5. ~~The scheduler can create notifications but can never flush their
+   emails~~ — **Fixed** in `supabase/migrations/0018_phase9_scheduler_email_capability.sql`,
+   verified end-to-end against staging including a real Mailtrap
+   delivery. See "Scheduler email capability fix" below.
+6. Edge/CDN-level rate limiting is not implemented — the current
    Postgres-backed limiter is right-sized for MVP traffic, not
    abuse-at-scale.
-6. `npm audit` is wired into CI as warn-only, not build-failing — a
+7. `npm audit` is wired into CI as warn-only, not build-failing — a
    deliberate starting point, worth tightening once there's a process
    for triaging findings.
