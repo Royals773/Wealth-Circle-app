@@ -350,20 +350,33 @@ throughout.
    exists — see `docs/phase-9-vercel-staging-checklist.md`. Email
    provider, monitoring vendor, and backup/PITR tier remain open
    decisions (see `docs/phase-9-deployment-checklist.md`).
-3. **Vercel's GitHub-push-triggers-a-build integration is not working**
-   — pushing to `staging` did not trigger an automatic deployment
-   during this session, even after disconnecting and reconnecting the
-   Git integration. Worked around via the Vercel CLI
-   (`vercel --prod`) directly for this session's fixes, but the root
-   cause (likely a GitHub App repository-access permission gap) hasn't
-   been diagnosed or fixed — worth investigating before relying on
-   push-to-deploy for real work. This extends further than previously
-   known: a `vercel --prod` CLI deploy creates a new deployment fine,
-   but does **not** automatically re-point the existing
-   `wealth-circle-app-git-staging-...vercel.app` alias to it (confirmed
-   twice during the Vercel-Toolbar CSP fix above) — `vercel alias set
-   <new-deployment-url> <git-staging-alias>` must be run manually after
-   every CLI deploy until the underlying Git integration is fixed.
+3. **Vercel's GitHub-push-triggers-a-build integration — root cause
+   diagnosed, one successful verification, still open for continued
+   follow-up, not yet fully closed out.** Root cause: the project's Git
+   connection was a lightweight, "sourceless" metadata link (the shape
+   created by CLI-based project linking), which records the repo/org/branch
+   for tagging purposes but never completes the GitHub OAuth App
+   installation and webhook registration — the actual mechanism GitHub
+   uses to notify Vercel of a push. Every deployment in this project's
+   history up to that point had `source: "cli"` or `undefined`, never
+   `"git"`. After the GitHub App connection and Vercel Production
+   Branch setting (corrected to `staging`) were addressed, one
+   empty, no-file-change test commit (`390e96a`, "Test: verify Vercel
+   git-push auto-deploy") pushed to `origin/staging` produced a new
+   deployment within seconds showing `source: "git"`,
+   `target: "production"`, which built successfully to `READY` and
+   passed an authenticated browser spot-check against the real "Susu"
+   staging group (Overview, Members, Contributions all loaded
+   correctly, no errors). Deployment Protection confirmed still active
+   throughout (`302` to `vercel.com/sso-api`).
+   **Not yet considered fully resolved**: this is one successful push,
+   not a sustained track record — recommend confirming push-to-deploy
+   continues working across several more real pushes before relying on
+   it unconditionally for production work. The older
+   `wealth-circle-app-git-staging-...vercel.app` alias was deliberately
+   left pointed at the previous CLI-deployed instance, not re-pointed —
+   whether to re-point it, retire it, or replace it with a fresh alias
+   strategy is an open follow-up, not decided here.
 4. The five scheduled-job RPCs don't yet check caller identity
    internally — a known, accepted, low-severity gap (each is
    idempotent and exposes only a count) documented in
