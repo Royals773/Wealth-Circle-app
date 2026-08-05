@@ -1084,6 +1084,71 @@ export interface Database {
           email_enabled?: boolean;
         }
       >;
+      member_profiles: Table<
+        {
+          id: string;
+          user_id: string;
+          group_id: string;
+          first_name: string;
+          middle_name: string | null;
+          last_name: string;
+          date_of_birth: string;
+          gender: string | null;
+          phone: string;
+          email: string;
+          address_line1: string;
+          address_line2: string | null;
+          city: string;
+          postcode: string;
+          country: string;
+          next_of_kin_full_name: string;
+          next_of_kin_relationship: string;
+          next_of_kin_phone: string;
+          next_of_kin_email: string | null;
+          consent_given_at: string;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          user_id: string;
+          group_id: string;
+          first_name: string;
+          middle_name?: string | null;
+          last_name: string;
+          date_of_birth: string;
+          gender?: string | null;
+          phone: string;
+          email: string;
+          address_line1: string;
+          address_line2?: string | null;
+          city: string;
+          postcode: string;
+          country?: string;
+          next_of_kin_full_name: string;
+          next_of_kin_relationship: string;
+          next_of_kin_phone: string;
+          next_of_kin_email?: string | null;
+          consent_given_at: string;
+        },
+        {
+          first_name?: string;
+          middle_name?: string | null;
+          last_name?: string;
+          date_of_birth?: string;
+          gender?: string | null;
+          phone?: string;
+          email?: string;
+          address_line1?: string;
+          address_line2?: string | null;
+          city?: string;
+          postcode?: string;
+          country?: string;
+          next_of_kin_full_name?: string;
+          next_of_kin_relationship?: string;
+          next_of_kin_phone?: string;
+          next_of_kin_email?: string | null;
+        }
+      >;
       audit_logs: Table<
         {
           id: string;
