@@ -351,32 +351,63 @@ throughout.
    provider, monitoring vendor, and backup/PITR tier remain open
    decisions (see `docs/phase-9-deployment-checklist.md`).
 3. **Vercel's GitHub-push-triggers-a-build integration — root cause
-   diagnosed, one successful verification, still open for continued
-   follow-up, not yet fully closed out.** Root cause: the project's Git
-   connection was a lightweight, "sourceless" metadata link (the shape
-   created by CLI-based project linking), which records the repo/org/branch
-   for tagging purposes but never completes the GitHub OAuth App
-   installation and webhook registration — the actual mechanism GitHub
-   uses to notify Vercel of a push. Every deployment in this project's
-   history up to that point had `source: "cli"` or `undefined`, never
-   `"git"`. After the GitHub App connection and Vercel Production
-   Branch setting (corrected to `staging`) were addressed, one
-   empty, no-file-change test commit (`390e96a`, "Test: verify Vercel
-   git-push auto-deploy") pushed to `origin/staging` produced a new
-   deployment within seconds showing `source: "git"`,
-   `target: "production"`, which built successfully to `READY` and
-   passed an authenticated browser spot-check against the real "Susu"
-   staging group (Overview, Members, Contributions all loaded
-   correctly, no errors). Deployment Protection confirmed still active
-   throughout (`302` to `vercel.com/sso-api`).
-   **Not yet considered fully resolved**: this is one successful push,
-   not a sustained track record — recommend confirming push-to-deploy
-   continues working across several more real pushes before relying on
-   it unconditionally for production work. The older
-   `wealth-circle-app-git-staging-...vercel.app` alias was deliberately
-   left pointed at the previous CLI-deployed instance, not re-pointed —
-   whether to re-point it, retire it, or replace it with a fresh alias
-   strategy is an open follow-up, not decided here.
+   diagnosed, three consecutive successful verifications, one related
+   regression found and fixed along the way, still recommended to keep
+   watching rather than considered permanently closed.** Root cause:
+   the project's Git connection was a lightweight, "sourceless"
+   metadata link (the shape created by CLI-based project linking),
+   which records the repo/org/branch for tagging purposes but never
+   completes the GitHub OAuth App installation and webhook
+   registration — the actual mechanism GitHub uses to notify Vercel of
+   a push. Every deployment in this project's history up to that point
+   had `source: "cli"` or `undefined`, never `"git"`. After the GitHub
+   App connection and Vercel Production Branch setting (corrected to
+   `staging`) were addressed, three separate empty, no-file-change test
+   commits (`390e96a`, `dfda9cc`, `3328c53`) each pushed to
+   `origin/staging` produced a new deployment within seconds showing
+   `source: "git"`, `target: "production"`, each building successfully
+   to `READY`. Deployment Protection confirmed still active throughout
+   every one of them (`302` to `vercel.com/sso-api`).
+
+   **A related regression was found and fixed during the second and
+   third verifications**: the first fresh git-triggered deployment
+   (`390e96a`) unexpectedly reintroduced the Vercel Toolbar CSP/console
+   errors already fixed earlier this phase (`Refused to load
+   https://vercel.live/_next-live/feedback/feedback.js...` plus
+   related blocked-resource errors) — root-caused via the Vercel API to
+   `enableProductionFeedback` having reverted from an explicit `false`
+   back to `null` (team-default), apparently as a side effect of the
+   Production Branch setting change, even though `enablePreviewFeedback`
+   correctly stayed `false` throughout. Re-disabling "Production
+   Deployments" in Toolbar settings and triggering a fresh deployment
+   (`3328c53`) confirmed clean: the `vercel.live` CSP error was gone,
+   and a full authenticated browser walkthrough (Console **and**
+   Network tabs checked) showed no remaining errors.
+
+   **Full authenticated smoke test performed against the third
+   deployment** (`wealth-circle-qkveslduy-...vercel.app`), signed in as
+   the "Susu" group owner: Overview showed correct real data; every nav
+   section opened normally (Members, Contributions, Loans, Repayments,
+   Withdrawals, Governance, Approvals, Notifications, Reports, Audit,
+   Settings); mobile/responsive layout confirmed usable; console
+   confirmed clean. **Two checklist items intentionally not completed
+   this round**: member-role restriction verification (signing in as
+   `wc-staging-member@example.com` to confirm restricted access) was
+   skipped because that account's password isn't currently recorded
+   anywhere and resetting it was out of scope for this smoke test
+   (credential rotation deliberately excluded from this task); group
+   switching was skipped because no current test account belongs to
+   more than one group after the earlier "WEALTH MASTERS" cleanup. Both
+   are explicit follow-ups, not silently dropped.
+
+   **Still not considered permanently closed**: three consecutive
+   successes plus one caught-and-fixed regression is meaningfully
+   better evidence than before, but this project setting (Toolbar
+   feedback) has now been observed to revert once already without
+   anyone directly changing it — worth a periodic spot-check rather
+   than assuming it's permanently stable. The older
+   `wealth-circle-app-git-staging-...vercel.app` alias remains
+   deliberately un-repointed, still an open follow-up.
 4. The five scheduled-job RPCs don't yet check caller identity
    internally — a known, accepted, low-severity gap (each is
    idempotent and exposes only a count) documented in
