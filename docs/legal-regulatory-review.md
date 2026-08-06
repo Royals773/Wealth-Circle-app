@@ -82,14 +82,15 @@ themselves needing permissions this project has not sought.
    required disclosures, or geofencing to exclude jurisdictions where
    the analysis doesn't hold).
 
-## Open question for the product owner
+## Open question for the product owner — resolved
 
-Should lending functionality be **technically disabled** (a feature
-flag, off by default in production) until this review completes, as an
-extra safeguard beyond "we haven't launched with real users yet" —
-or is the current state (feature exists in the codebase, simply not
-used by any real group yet) sufficient? This document doesn't assume an
-answer; it can be implemented if wanted, but shouldn't be assumed.
+**Decided (Phase 10 planning)**: yes, lending functionality will be
+**technically disabled** via a feature flag, off by default in
+production, until this review is complete and a written opinion is on
+file — not left as "exists in the codebase, simply not used yet."
+Design recorded in [phase-10-planning.md](./phase-10-planning.md);
+implementation is a separate, later gated step, not yet built as of
+this decision being recorded.
 
 ## Launch gate
 
@@ -98,3 +99,13 @@ should launch until step 3 above is complete**, regardless of how much
 of the rest of Phase 9's technical checklist
 (`docs/phase-9-deployment-checklist.md`) is finished. This is listed
 first on that checklist's production section for exactly this reason.
+
+**Product owner decision (public launch)**: before removing Deployment
+Protection for the first full public launch, this gap was raised
+explicitly — the lending feature flag described above was never
+implemented, so the loan feature (application, approval, disbursement,
+repayment) would go live fully unrestricted, with no written legal
+opinion on file. The product owner chose to proceed with the full
+public launch, lending included, as a knowing decision rather than an
+oversight. Steps 1–3 above remain outstanding and are not resolved by
+this decision.

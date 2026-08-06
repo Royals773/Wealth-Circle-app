@@ -102,7 +102,15 @@ export function SignUpForm() {
         <Checkbox id="acceptTerms" name="acceptTerms" required className="mt-0.5" />
         <Label htmlFor="acceptTerms" className="text-sm font-normal text-muted-foreground">
           I understand WealthCircle does not hold or move my group&apos;s money, and I agree
-          to keep our group&apos;s money in our own bank account.
+          to keep our group&apos;s money in our own bank account. I agree to the{" "}
+          <Link href="/terms" className="underline hover:text-foreground" target="_blank">
+            Terms of Use
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline hover:text-foreground" target="_blank">
+            Privacy Policy
+          </Link>
+          .
         </Label>
       </div>
       {state.fieldErrors?.acceptTerms ? (

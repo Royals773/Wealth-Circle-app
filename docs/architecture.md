@@ -483,7 +483,11 @@ setting per-request in `src/proxy.ts` (Next 16 renamed Middleware to
 Proxy — see its own docs under `node_modules/next/dist/docs/`) and
 force full dynamic rendering everywhere, costing the marketing route
 group its static optimization for an app that loads no third-party
-scripts.
+scripts. Both `script-src` and `style-src` need `'unsafe-inline'` —
+see [security-boundaries.md](./security-boundaries.md#production-hardening-phase-9)
+for a real bug this caused when `script-src` briefly omitted it
+(Next.js's own framework hydration bootstrap needs it, not just app
+code), found via direct browser automation during staging testing.
 
 **Rate limiting** (`src/lib/rate-limit.ts`) wraps the new
 `check_rate_limit()` RPC — a fixed-window counter keyed by a

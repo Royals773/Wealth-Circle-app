@@ -11,6 +11,7 @@ import {
   Bell,
   ScrollText,
   Settings,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ export const DASHBOARD_NAV_ITEMS: NavItem[] = [
   { label: "Withdrawals", segment: "withdrawals", icon: Banknote },
   { label: "Approvals", segment: "approvals", icon: ClipboardCheck },
   { label: "Governance", segment: "governance", icon: Vote },
+  { label: "Constitution", segment: "constitution", icon: FileText },
   { label: "Reports", segment: "reports", icon: FileBarChart },
   { label: "Audit log", segment: "audit", icon: ScrollText },
   { label: "Notifications", segment: "notifications", icon: Bell },

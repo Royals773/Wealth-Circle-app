@@ -396,6 +396,11 @@ export interface Database {
       expire_stale_invitations: Fn<{ p_now: string }, number>;
       expire_stale_ownership_transfers: Fn<{ p_now: string }, number>;
       check_rate_limit: Fn<{ p_key: string; p_window_seconds: number; p_max: number }, boolean>;
+      publish_group_constitution: Fn<
+        { p_group_id: string; p_storage_path: string; p_title: string; p_note: string | null },
+        { id: string; version: number }[]
+      >;
+      acknowledge_group_constitution: Fn<{ p_constitution_id: string }, undefined>;
     };
     Tables: {
       profiles: Table<
@@ -1083,6 +1088,107 @@ export interface Database {
         {
           email_enabled?: boolean;
         }
+      >;
+      member_profiles: Table<
+        {
+          id: string;
+          user_id: string;
+          group_id: string;
+          first_name: string;
+          middle_name: string | null;
+          last_name: string;
+          date_of_birth: string;
+          gender: string | null;
+          phone: string;
+          email: string;
+          address_line1: string;
+          address_line2: string | null;
+          city: string;
+          postcode: string;
+          country: string;
+          next_of_kin_full_name: string;
+          next_of_kin_relationship: string;
+          next_of_kin_phone: string;
+          next_of_kin_email: string | null;
+          consent_given_at: string;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          user_id: string;
+          group_id: string;
+          first_name: string;
+          middle_name?: string | null;
+          last_name: string;
+          date_of_birth: string;
+          gender?: string | null;
+          phone: string;
+          email: string;
+          address_line1: string;
+          address_line2?: string | null;
+          city: string;
+          postcode: string;
+          country?: string;
+          next_of_kin_full_name: string;
+          next_of_kin_relationship: string;
+          next_of_kin_phone: string;
+          next_of_kin_email?: string | null;
+          consent_given_at: string;
+        },
+        {
+          first_name?: string;
+          middle_name?: string | null;
+          last_name?: string;
+          date_of_birth?: string;
+          gender?: string | null;
+          phone?: string;
+          email?: string;
+          address_line1?: string;
+          address_line2?: string | null;
+          city?: string;
+          postcode?: string;
+          country?: string;
+          next_of_kin_full_name?: string;
+          next_of_kin_relationship?: string;
+          next_of_kin_phone?: string;
+          next_of_kin_email?: string | null;
+        }
+      >;
+      group_constitutions: Table<
+        {
+          id: string;
+          group_id: string;
+          version: number;
+          storage_path: string;
+          title: string;
+          note: string | null;
+          published_by: string;
+          published_at: string;
+        },
+        {
+          group_id: string;
+          version: number;
+          storage_path: string;
+          title: string;
+          note?: string | null;
+          published_by: string;
+        },
+        Record<string, never>
+      >;
+      constitution_acknowledgements: Table<
+        {
+          id: string;
+          user_id: string;
+          group_id: string;
+          constitution_id: string;
+          acknowledged_at: string;
+        },
+        {
+          user_id: string;
+          group_id: string;
+          constitution_id: string;
+        },
+        Record<string, never>
       >;
       audit_logs: Table<
         {

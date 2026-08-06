@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Users } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InviteMemberDialog } from "@/components/dashboard/invite-member-dialog";
 import { MemberDirectoryTable } from "@/components/dashboard/member-directory-table";
@@ -71,7 +73,15 @@ export default async function MembersPage({ params }: { params: Promise<{ groupI
 
     return (
       <div>
-        <PageHeader title="Members" description="Everyone who belongs to this group, and the role they hold here." />
+        <PageHeader
+          title="Members"
+          description="Everyone who belongs to this group, and the role they hold here."
+          action={
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/dashboard/${groupId}/members/apply`}>Complete member profile</Link>
+            </Button>
+          }
+        />
 
         {roster.length === 0 ? (
           <EmptyState

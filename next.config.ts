@@ -6,13 +6,27 @@ import type { NextConfig } from "next";
  * per-request in src/proxy.ts and force full dynamic rendering on every
  * matched page, which would cost the (marketing) route group its static
  * optimization for no real benefit, since the app loads no third-party
- * scripts. 'unsafe-inline' on style-src is needed for Tailwind/Next's
- * inline critical CSS; there is no script-src equivalent need since the
- * app ships no inline <script> tags.
+ * scripts.
+ *
+ * script-src MUST include 'unsafe-inline', not just style-src — this
+ * was a real bug in an earlier version of this file, found via a full
+ * click-through of the deployed staging site: Next.js's own framework
+ * bootstrap (RSC payload streaming, hydration data) injects inline
+ * <script> tags on every page load, regardless of app code. Without
+ * 'unsafe-inline' here, the browser blocked those scripts outright,
+ * breaking React hydration app-wide — every client component
+ * (including basic Radix UI form controls) silently stopped responding
+ * to any interaction, with no build-time signal that anything was
+ * wrong. This is Next.js's own documented default for apps not using
+ * nonces (see node_modules/next/dist/docs/.../content-security-policy.md,
+ * "Without Nonces" section) — nonce-based or experimental SRI-based CSP
+ * remain available as stricter future upgrades if ever wanted, at the
+ * cost of forcing dynamic rendering (nonces) or App-Router-only,
+ * experimental status (SRI).
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
@@ -40,6 +54,17 @@ const nextConfig: NextConfig = {
         headers: SECURITY_HEADERS,
       },
     ];
+  },
+  experimental: {
+    serverActions: {
+      // Default is 1MB, which would silently reject any constitution
+      // PDF upload over that — this raises the limit to cover the
+      // 20MB cap enforced in src/lib/validations/constitution.ts, plus
+      // headroom for multipart/form-data overhead (Next's own docs
+      // recommend an extra 10-20KB; 1MB of headroom here is deliberately
+      // generous, not tuned to the minimum).
+      bodySizeLimit: "21mb",
+    },
   },
 };
 

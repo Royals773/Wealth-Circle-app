@@ -417,3 +417,305 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
     expect(notification?.length).toBe(1);
   });
 });
+
+/**
+ * Live tests for the Phase 9 scheduler-email-capability fix
+ * (supabase/migrations/0018_phase9_scheduler_email_capability.sql).
+ * Self-contained fixtures, separate from the describe block above, so
+ * this can be reasoned about and cleaned up independently. Requires
+ * 0018 to already be applied.
+ */
+describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () => {
+  let adminClient: SupabaseClient;
+  let ownerClient: SupabaseClient;
+  let memberClient: SupabaseClient;
+  let bareOutsiderClient: SupabaseClient;
+  let foreignOwnerClient: SupabaseClient;
+  let schedulerClient: SupabaseClient;
+  let ownerId: string;
+  let memberId: string;
+  let bareOutsiderId: string;
+  let foreignOwnerId: string;
+  let schedulerId: string;
+  let groupId: string;
+  let foreignGroupId: string;
+
+  const runId = Date.now().toString(36) + "-sched";
+  const testPassword = "SchedCapTest123!";
+
+  beforeAll(async () => {
+    adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    async function createConfirmedUser(email: string, fullName: string) {
+      const { data, error } = await adminClient.auth.admin.createUser({
+        email,
+        password: testPassword,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+      if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
+      const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
+      if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
+      return { id: data.user.id, client };
+    }
+
+    const owner = await createConfirmedUser(`wc-sched-owner-${runId}@example.com`, "Sched Owner");
+    ownerId = owner.id;
+    ownerClient = owner.client;
+
+    const member = await createConfirmedUser(`wc-sched-member-${runId}@example.com`, "Sched Member");
+    memberId = member.id;
+    memberClient = member.client;
+
+    const bareOutsider = await createConfirmedUser(`wc-sched-outsider-${runId}@example.com`, "Sched Outsider");
+    bareOutsiderId = bareOutsider.id;
+    bareOutsiderClient = bareOutsider.client;
+
+    const foreignOwner = await createConfirmedUser(`wc-sched-foreign-${runId}@example.com`, "Sched Foreign Owner");
+    foreignOwnerId = foreignOwner.id;
+    foreignOwnerClient = foreignOwner.client;
+
+    // The scheduler test account is deliberately never joined to any
+    // group — only ever granted the capability row below.
+    const scheduler = await createConfirmedUser(`wc-sched-scheduler-${runId}@example.com`, "Sched Scheduler");
+    schedulerId = scheduler.id;
+    schedulerClient = scheduler.client;
+
+    const { data: group } = await ownerClient.rpc("create_group_with_setup", {
+      p_name: "Scheduler Capability Test Group",
+      p_slug: `sched-cap-group-${runId}`,
+      p_description: null,
+      p_country_code: "GB",
+      p_currency_code: "GBP",
+      p_contribution_frequency: "monthly",
+      p_contribution_type: "flexible",
+      p_fixed_amount_minor_units: null,
+      p_financial_year_start_month: 1,
+      p_rules: null,
+      p_invites: [],
+    });
+    groupId = group![0].group_id;
+
+    const { data: foreignGroup } = await foreignOwnerClient.rpc("create_group_with_setup", {
+      p_name: "Scheduler Capability Foreign Group",
+      p_slug: `sched-cap-foreign-${runId}`,
+      p_description: null,
+      p_country_code: "GB",
+      p_currency_code: "GBP",
+      p_contribution_frequency: "monthly",
+      p_contribution_type: "flexible",
+      p_fixed_amount_minor_units: null,
+      p_financial_year_start_month: 1,
+      p_rules: null,
+      p_invites: [],
+    });
+    foreignGroupId = foreignGroup![0].group_id;
+
+    const { data: invite, error: inviteErr } = await ownerClient.rpc("create_invitation", {
+      p_group_id: groupId,
+      p_email: `wc-sched-member-${runId}@example.com`,
+      p_role: "member",
+    });
+    if (inviteErr) throw new Error(`create_invitation failed: ${inviteErr.message}`);
+    const { error: acceptErr } = await memberClient.rpc("accept_invitation", { p_token: invite![0].raw_token });
+    if (acceptErr) throw new Error(`accept_invitation failed: ${acceptErr.message}`);
+
+    // Grant the scheduler capability directly — service-role only, out
+    // of band, exactly matching how a real environment would do it
+    // (never via the app runtime or a migration-embedded id).
+    const { error: grantErr } = await adminClient
+      .from("scheduler_capabilities")
+      .insert({ user_id: schedulerId, is_active: true, label: `test:${runId}` });
+    if (grantErr) throw new Error(`Failed to grant scheduler capability: ${grantErr.message}`);
+  });
+
+  afterAll(async () => {
+    if (!adminClient) return;
+    if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
+    if (foreignGroupId) await adminClient.from("groups").delete().eq("id", foreignGroupId);
+    if (schedulerId) await adminClient.from("scheduler_capabilities").delete().eq("user_id", schedulerId);
+    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
+    if (memberId) await adminClient.auth.admin.deleteUser(memberId);
+    if (bareOutsiderId) await adminClient.auth.admin.deleteUser(bareOutsiderId);
+    if (foreignOwnerId) await adminClient.auth.admin.deleteUser(foreignOwnerId);
+    if (schedulerId) await adminClient.auth.admin.deleteUser(schedulerId);
+  });
+
+  async function createTestNotification(dedupeKey: string) {
+    await ownerClient.rpc("create_notification", {
+      p_recipient_id: memberId,
+      p_group_id: groupId,
+      p_category: "contribution",
+      p_type: "test_scheduler_cap",
+      p_title: "Scheduler capability test",
+      p_body: null,
+      p_related_type: null,
+      p_related_id: null,
+      p_dedupe_key: dedupeKey,
+    });
+    const { data } = await memberClient.from("notifications").select("id").eq("dedupe_key", dedupeKey).single();
+    return data!.id as string;
+  }
+
+  it("is_active_scheduler is false for an owner, a member, and a bare outsider, true only for the granted scheduler", async () => {
+    expect((await ownerClient.rpc("is_active_scheduler")).data).toBe(false);
+    expect((await memberClient.rpc("is_active_scheduler")).data).toBe(false);
+    expect((await bareOutsiderClient.rpc("is_active_scheduler")).data).toBe(false);
+    expect((await schedulerClient.rpc("is_active_scheduler")).data).toBe(true);
+  });
+
+  it("a normal authenticated user with no shared group and no scheduler capability cannot claim pending emails", async () => {
+    const id = await createTestNotification(`sched_test_outsider:${runId}`);
+
+    const { data: claim } = await bareOutsiderClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    const claimedIds = (claim ?? []).map((r: { notification_id: string }) => r.notification_id);
+    expect(claimedIds).not.toContain(id);
+
+    const { data: row } = await memberClient.from("notifications").select("email_status").eq("id", id).single();
+    expect(row?.email_status).toBe("pending");
+
+    // Deliberately left 'pending' by this test (nobody was entitled to
+    // claim it) — cleaned up explicitly so it can't be swept up by a
+    // later test's unscoped scheduler claim (the scheduler claims
+    // across all groups, not just this file's fixture group).
+    await adminClient.from("notifications").delete().eq("id", id);
+  });
+
+  it("an owner cannot impersonate the scheduler to claim a group they don't belong to", async () => {
+    await foreignOwnerClient.rpc("create_notification", {
+      p_recipient_id: foreignOwnerId,
+      p_group_id: foreignGroupId,
+      p_category: "contribution",
+      p_type: "test_scheduler_cap_foreign",
+      p_title: "Foreign group notification",
+      p_body: null,
+      p_related_type: null,
+      p_related_id: null,
+      p_dedupe_key: `sched_test_foreign:${runId}`,
+    });
+    const { data: foreignRow } = await foreignOwnerClient
+      .from("notifications")
+      .select("id")
+      .eq("dedupe_key", `sched_test_foreign:${runId}`)
+      .single();
+
+    // ownerClient has real elevated (owner) role — but only within its
+    // own group. Role alone must not satisfy the scheduler branch.
+    const { data: claim } = await ownerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    const claimedIds = (claim ?? []).map((r: { notification_id: string }) => r.notification_id);
+    expect(claimedIds).not.toContain(foreignRow!.id);
+    expect((await ownerClient.rpc("is_active_scheduler")).data).toBe(false);
+
+    // Same reasoning as the outsider test above: left 'pending' by
+    // design, cleaned up explicitly to avoid polluting later
+    // unscoped-scheduler-claim tests.
+    await adminClient.from("notifications").delete().eq("id", foreignRow!.id);
+  });
+
+  it("the scheduler can claim a bounded pending batch, covering everything across enough calls", async () => {
+    // created_at has no secondary tiebreaker in claim_pending_notification_emails'
+    // ORDER BY (unchanged from the original 0015 function — this fix
+    // didn't touch ordering, only eligibility/authorization), so three
+    // rapid inserts aren't guaranteed strict FIFO order if their
+    // timestamps tie. What's actually guaranteed, and what this
+    // asserts: each call is bounded to p_limit, and every pending row
+    // is eventually claimed exactly once across enough calls.
+    const id1 = await createTestNotification(`sched_test_batch1:${runId}`);
+    const id2 = await createTestNotification(`sched_test_batch2:${runId}`);
+    const id3 = await createTestNotification(`sched_test_batch3:${runId}`);
+
+    const { data: firstBatch } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 2 });
+    expect(firstBatch?.length).toBe(2);
+
+    const { data: secondBatch } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 2 });
+    expect(secondBatch?.length).toBe(1);
+
+    const allClaimedIds = [...firstBatch!, ...secondBatch!].map((r: { notification_id: string }) => r.notification_id);
+    expect(new Set(allClaimedIds)).toEqual(new Set([id1, id2, id3]));
+  });
+
+  it("the scheduler cannot directly read unrelated group/financial data or other recipients' notifications", async () => {
+    const { data: memberships } = await schedulerClient.from("group_memberships").select("*").eq("group_id", groupId);
+    expect(memberships ?? []).toEqual([]);
+
+    const { data: contributions } = await schedulerClient
+      .from("contribution_records")
+      .select("*")
+      .eq("group_id", groupId);
+    expect(contributions ?? []).toEqual([]);
+
+    const { data: notifs } = await schedulerClient.from("notifications").select("*").eq("recipient_id", memberId);
+    expect(notifs ?? []).toEqual([]);
+  });
+
+  it("two immediate scheduler runs do not claim (and would not send) the same email twice", async () => {
+    const id = await createTestNotification(`sched_test_dupe:${runId}`);
+
+    const { data: firstRun } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    const firstIds = (firstRun ?? []).map((r: { notification_id: string }) => r.notification_id);
+    expect(firstIds).toContain(id);
+
+    const { data: secondRun } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    const secondIds = (secondRun ?? []).map((r: { notification_id: string }) => r.notification_id);
+    expect(secondIds).not.toContain(id);
+
+    const { data: row } = await memberClient.from("notifications").select("email_status").eq("id", id).single();
+    expect(row?.email_status).toBe("sending");
+  });
+
+  it("a failed delivery is not retried immediately, but is retried after the cooldown", async () => {
+    const id = await createTestNotification(`sched_test_retry:${runId}`);
+
+    const { data: claim } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    expect((claim ?? []).map((r: { notification_id: string }) => r.notification_id)).toContain(id);
+
+    await schedulerClient.rpc("mark_notification_email_result", {
+      p_notification_id: id,
+      p_status: "failed",
+      p_error: "simulated delivery failure",
+    });
+    const { data: failedRow } = await memberClient.from("notifications").select("email_status").eq("id", id).single();
+    expect(failedRow?.email_status).toBe("failed");
+
+    const { data: tooSoon } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    expect((tooSoon ?? []).map((r: { notification_id: string }) => r.notification_id)).not.toContain(id);
+
+    // Simulate the 15-minute cooldown having passed. Only ever done here
+    // via the service-role admin client, never by an ordinary caller.
+    const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    await adminClient.from("notifications").update({ email_attempted_at: twentyMinutesAgo }).eq("id", id);
+
+    const { data: retried } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    expect((retried ?? []).map((r: { notification_id: string }) => r.notification_id)).toContain(id);
+    const { data: retriedRow } = await memberClient.from("notifications").select("email_status").eq("id", id).single();
+    expect(retriedRow?.email_status).toBe("sending");
+  });
+
+  it("disabling the scheduler capability immediately blocks future claims, and re-enabling restores it", async () => {
+    const { error: disableErr } = await adminClient
+      .from("scheduler_capabilities")
+      .update({ is_active: false })
+      .eq("user_id", schedulerId);
+    expect(disableErr).toBeNull();
+    expect((await schedulerClient.rpc("is_active_scheduler")).data).toBe(false);
+
+    const id = await createTestNotification(`sched_test_disabled:${runId}`);
+    const { data: blockedClaim } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    expect((blockedClaim ?? []).map((r: { notification_id: string }) => r.notification_id)).not.toContain(id);
+    const { data: stillPending } = await memberClient.from("notifications").select("email_status").eq("id", id).single();
+    expect(stillPending?.email_status).toBe("pending");
+
+    const { error: reenableErr } = await adminClient
+      .from("scheduler_capabilities")
+      .update({ is_active: true })
+      .eq("user_id", schedulerId);
+    expect(reenableErr).toBeNull();
+    expect((await schedulerClient.rpc("is_active_scheduler")).data).toBe(true);
+
+    const { data: nowClaimed } = await schedulerClient.rpc("claim_pending_notification_emails", { p_limit: 50 });
+    expect((nowClaimed ?? []).map((r: { notification_id: string }) => r.notification_id)).toContain(id);
+  });
+});
