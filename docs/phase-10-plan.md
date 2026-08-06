@@ -7,6 +7,18 @@ readiness audit, before any real Phase 10 feature work begins. Two
 external blockers (bottom of this doc) remain open regardless of how
 much of the technical checklist below is done.
 
+## Feature: group constitutions — done
+
+Versioned, PDF-based group constitutions (upload/publish by
+owners/administrators, view/download/acknowledge by members, an
+access gate requiring at least one acknowledged version with managers
+always exempt and never-blocked existing signers on re-publish) are
+built, migrated (`0020_group_constitutions.sql`), and fully verified
+against real authenticated sessions on staging: 11/11 requested checks
+plus 2 bonus checks pass, including cross-group Storage isolation and
+all three gating states with real server-rendered HTML, not just
+policy inspection. ✅ Done.
+
 ## Steps 1–5: staging pipeline and test-coverage verification
 
 All five completed against the live staging Supabase project and the
@@ -53,6 +65,42 @@ here touched `main`, production, or any real user.
 5. **Vercel Toolbar spot-check**: `enablePreviewFeedback` and
    `enableProductionFeedback` both confirmed `false` — clean, no
    reversion this time. ✅ Done (but see recurring-check note below).
+
+## Standing convention: wrap migrations in BEGIN/COMMIT
+
+Two separate migrations have now left a genuinely partial result after
+a Supabase SQL Editor paste reported "Success": `0018` (needed two
+tries, see `docs/phase-9-smoke-test.md`) and `0020` (tables created,
+the storage bucket + policies section at the bottom silently never
+ran — caught only by independently querying the bucket afterward, not
+by trusting the editor). Neither file had a transaction wrapper, so a
+mid-file error (or a partial paste) leaves whatever ran before the
+failure point applied and everything after it silently skipped, with
+no atomic all-or-nothing guarantee. **Going forward, every new
+migration file should open with `begin;` and close with `commit;`**
+so a failure partway through rolls back cleanly instead of leaving a
+half-applied schema — and "Success" becomes trustworthy again, since a
+transaction that didn't fully commit will report the actual error
+instead. Not applied retroactively to already-applied files.
+
+**A third, related incident during the same migration's function fix**:
+a `create or replace function` reported success twice without the
+function's actual body changing (confirmed by directly querying
+`pg_proc.prosrc` — still the old, buggy source both times). Root
+cause: the SQL was displayed for copy-paste through a Bash `cat`/
+`echo` shell wrapper, and that wrapper syntax got copied into the SQL
+Editor along with the statement, either erroring visibly or — the
+more insidious case — silently pasting something other than the
+intended statement while still reporting success. A `comment on
+function ... is '<marker>'` round-trip (write, then immediately read
+back with a separate query) proved DDL execution and visibility were
+never the problem once the statement was given as plain text with no
+shell wrapper at all. **Going forward, any SQL meant for a manual
+SQL Editor paste must be presented as plain text (a markdown code
+fence is fine) — never generated or displayed through `cat`, `echo`,
+`printf`, or any other shell command**, since the wrapper syntax can
+end up in the copied text and there's no way to tell from a "Success"
+message alone whether that happened.
 
 ## Recurring check: Vercel Toolbar setting
 

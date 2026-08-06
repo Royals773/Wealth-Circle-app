@@ -6,6 +6,7 @@ import type { LoanActionState } from "./loans";
 import type { WithdrawalActionState } from "./withdrawals";
 import type { GovernanceActionState } from "./governance";
 import type { MembershipActionState } from "./membership";
+import type { ConstitutionActionState } from "./constitution";
 
 /**
  * Initial useActionState values, kept out of the "use server" action
@@ -20,3 +21,4 @@ export const initialLoanActionState: LoanActionState = { status: "idle" };
 export const initialWithdrawalActionState: WithdrawalActionState = { status: "idle" };
 export const initialGovernanceActionState: GovernanceActionState = { status: "idle" };
 export const initialMembershipActionState: MembershipActionState = { status: "idle" };
+export const initialConstitutionActionState: ConstitutionActionState = { status: "idle" };
