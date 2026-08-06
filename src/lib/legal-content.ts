@@ -219,7 +219,7 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       heading: "18. Contact",
       paragraphs: ["WealthCircle App"],
-      list: ["Support contact email: to be confirmed before launch", "Registered address: to be added on incorporation"],
+      list: ["Support contact email: privacy@wealthcircle.app"],
     },
   ],
 };
@@ -273,9 +273,8 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: "4. Lawful bases for processing",
       paragraphs: [
-        "WealthCircle processes personal data on a lawful basis in accordance with UK GDPR. The specific lawful basis applicable to each processing activity is being finalised as part of our ongoing legal review ahead of full launch, and this section will be updated to confirm it once settled. In general terms, and subject to that confirmation, we expect to rely on one or more of the following:",
+        "We process your personal data under the UK GDPR using a combination of lawful bases, depending on the specific activity. To provide and manage your Wealth Circle account, operate the app, and deliver customer support, we rely on our contractual obligation to you. Where we are required to retain or disclose information to meet legal, tax, and anti-money-laundering requirements, we rely on our legal obligation. For essential operational activities that are not strictly contractual or legal but necessary to run, secure, and improve our services—such as certain analytics, service improvement and fraud-monitoring measures—we rely on our legitimate interests, after assessing that these do not override your rights and interests.",
       ],
-      list: ["performance of a contract", "legitimate interests", "legal obligation", "consent, where required for optional processing"],
     },
     {
       heading: "",
@@ -316,7 +315,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: "8. Retention",
       paragraphs: [
-        "We retain your personal data for as long as you remain a member of a savings group on WealthCircle. Where you leave a group, or your account is closed, we retain your personal data for a defined further period to meet legal, accounting, and dispute-resolution obligations, after which it is securely deleted or anonymised. The exact retention period following departure or account closure is being finalised ahead of full launch and will be confirmed and stated here once settled.",
+        "We keep your account and transaction information for as long as your account is active and for up to six years after your relationship with us ends, so that we can comply with our legal, tax and anti-money-laundering obligations. We keep marketing and analytics information for a shorter period, up to three years after your last interaction with us, unless you withdraw consent or exercise your right to object to this processing. After these periods, we delete or anonymise your personal data so that it can no longer be linked back to you.",
         "Further detail on our approach to retention and deletion is set out in our internal Retention and Deletion Policy, available on request.",
       ],
     },
@@ -356,8 +355,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     },
     {
       heading: "14. Contact details",
-      paragraphs: ["WealthCircle App"],
-      list: ["Privacy contact email: to be confirmed before launch", "Registered address: to be added on incorporation"],
+      paragraphs: ["WealthCircle App", "You can contact us about your personal data at privacy@wealthcircle.app."],
     },
   ],
 };

@@ -99,3 +99,13 @@ should launch until step 3 above is complete**, regardless of how much
 of the rest of Phase 9's technical checklist
 (`docs/phase-9-deployment-checklist.md`) is finished. This is listed
 first on that checklist's production section for exactly this reason.
+
+**Product owner decision (public launch)**: before removing Deployment
+Protection for the first full public launch, this gap was raised
+explicitly — the lending feature flag described above was never
+implemented, so the loan feature (application, approval, disbursement,
+repayment) would go live fully unrestricted, with no written legal
+opinion on file. The product owner chose to proceed with the full
+public launch, lending included, as a knowing decision rather than an
+oversight. Steps 1–3 above remain outstanding and are not resolved by
+this decision.
