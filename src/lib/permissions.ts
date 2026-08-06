@@ -49,6 +49,7 @@ export const CAPABILITIES = [
   "review_loan_applications",
   "record_repayments",
   "manage_constitution",
+  "import_historical_contributions",
   "create_governance_proposal",
   "vote_on_proposal",
   "view_audit_log",

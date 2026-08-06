@@ -41,7 +41,7 @@ export function SidebarNav({
             <item.icon aria-hidden className="h-4 w-4 shrink-0" />
             <span className="flex-1">{item.label}</span>
             {showUnreadBadge ? (
-              <Badge variant="destructive" className="h-5 min-w-5 justify-center px-1 text-[11px]">
+              <Badge variant="destructive" className="h-5 min-w-5 justify-center px-1 text-xs">
                 {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
               </Badge>
             ) : null}

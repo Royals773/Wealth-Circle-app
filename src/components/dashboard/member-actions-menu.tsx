@@ -70,7 +70,7 @@ export function MemberActionsMenu({
                   Remove
                 </DropdownMenuItem>
               </>
-            ) : status === "suspended" ? (
+            ) : status === "suspended" || status === "removed" ? (
               <DropdownMenuItem disabled={isPending} onSelect={reactivate}>
                 {isPending ? "Reactivating…" : "Reactivate"}
               </DropdownMenuItem>

@@ -161,27 +161,32 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
       p_grace_period_days: 0,
     });
 
-    const { data: application } = await loanMemberClient.rpc("apply_for_loan", {
-      p_group_id: groupId,
-      p_amount_minor_units: 5000,
-      p_term_months: 6,
-      p_purpose: "membership test loan",
+    // apply_for_loan / decide_loan_application / record_disbursement are
+    // gated (supabase/migrations/0021_gate_lending_pending_legal_review.sql)
+    // pending UK legal/regulatory review — not touched by this test file.
+    // This fixture only needs a real 'active' loans row to exist for the
+    // removal-blocker test below, so it's inserted directly via the
+    // service-role client instead: the same "genuinely backend-only
+    // fixture setup" use of adminClient already established elsewhere in
+    // this file (user creation/cleanup), not a way around the gate for
+    // anything a real session could do.
+    const { error: loanFixtureError } = await adminClient.from("loans").insert({
+      group_id: groupId,
+      borrower_id: loanMemberId,
+      principal_minor_units: 5000,
+      currency_code: "GBP",
+      interest_rate_bps: 500,
+      term_months: 6,
+      interest_amount_minor_units: 250,
+      total_repayable_minor_units: 5250,
+      repayment_frequency: "monthly",
+      status: "active",
+      disbursed_by: ownerId,
+      disbursed_at: new Date().toISOString(),
+      disbursement_date: "2026-02-01",
+      disbursement_reference: "MEM-TEST-REF",
     });
-    const { data: decision } = await ownerClient.rpc("decide_loan_application", {
-      p_application_id: application![0].application_id,
-      p_decision: "approved",
-      p_approved_amount_minor_units: 5000,
-      p_approved_term_months: 6,
-      p_approved_interest_rate_bps: 500,
-      p_approved_repayment_frequency: "monthly",
-      p_notes: null,
-    });
-    await ownerClient.rpc("record_disbursement", {
-      p_loan_id: decision![0].loan_id,
-      p_disbursement_date: "2026-02-01",
-      p_disbursement_reference: "MEM-TEST-REF",
-      p_disbursement_note: null,
-    });
+    if (loanFixtureError) throw new Error(`Failed to seed active-loan fixture: ${loanFixtureError.message}`);
   });
 
   afterAll(async () => {
@@ -389,6 +394,74 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
       .eq("action", "member_removed")
       .eq("entity_id", targetId);
     expect(auditRows?.length).toBeGreaterThan(0);
+  });
+
+  it("lets a manager directly reactivate a removed member, resetting their tenure", async () => {
+    const { data: beforeRow } = await ownerClient
+      .from("group_memberships")
+      .select("joined_at")
+      .eq("group_id", groupId)
+      .eq("user_id", targetId)
+      .single();
+    const originalJoinedAt = beforeRow?.joined_at;
+
+    const { error } = await administratorClient.rpc("reactivate_member", {
+      p_group_id: groupId,
+      p_member_id: targetId,
+      p_reason: "Rejoining after a break",
+    });
+    expect(error).toBeNull();
+
+    const { data: row } = await ownerClient
+      .from("group_memberships")
+      .select("status, joined_at")
+      .eq("group_id", groupId)
+      .eq("user_id", targetId)
+      .single();
+    expect(row?.status).toBe("active");
+    // A removed member's tenure genuinely restarts — unlike suspension,
+    // which only pauses — so joined_at must move forward, not stay
+    // anchored to their original (now stale) join date.
+    expect(new Date(row!.joined_at).getTime()).toBeGreaterThan(new Date(originalJoinedAt).getTime());
+
+    const { data: seenAfterReactivation } = await targetClient.from("groups").select("id").eq("id", groupId);
+    expect(seenAfterReactivation?.length).toBe(1);
+  });
+
+  it("lets a removed member rejoin via a fresh invitation, instead of being blocked as 'already a member'", async () => {
+    const { error: removeError } = await administratorClient.rpc("remove_member", {
+      p_group_id: groupId,
+      p_member_id: targetId,
+      p_reason: "Testing the re-invitation path",
+    });
+    expect(removeError).toBeNull();
+
+    const { data: invite, error: inviteError } = await ownerClient.rpc("create_invitation", {
+      p_group_id: groupId,
+      p_email: targetEmail,
+      p_role: "treasurer",
+    });
+    expect(inviteError).toBeNull();
+
+    const { error: acceptError } = await targetClient.rpc("accept_invitation", {
+      p_token: invite![0].raw_token,
+    });
+    expect(acceptError).toBeNull();
+
+    const { data: rows } = await ownerClient
+      .from("group_memberships")
+      .select("status, role")
+      .eq("group_id", groupId)
+      .eq("user_id", targetId);
+    // Exactly one row — the old 'removed' row was reactivated in place,
+    // not left behind alongside a second inserted row (which would
+    // violate the unique (group_id, user_id) constraint anyway).
+    expect(rows).toHaveLength(1);
+    expect(rows![0].status).toBe("active");
+    expect(rows![0].role).toBe("treasurer");
+
+    const { data: seenAfterRejoin } = await targetClient.from("groups").select("id").eq("id", groupId);
+    expect(seenAfterRejoin?.length).toBe(1);
   });
 
   it("prevents an owner from removing themselves — they must use leave group", async () => {

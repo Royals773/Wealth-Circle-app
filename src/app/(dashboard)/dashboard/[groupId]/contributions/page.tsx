@@ -17,6 +17,9 @@ import {
   RecordContributionDialog,
   type MemberOption,
 } from "@/components/dashboard/record-contribution-dialog";
+import { RecordBackdatedContributionDialog } from "@/components/dashboard/record-backdated-contribution-dialog";
+import { BulkImportContributionsDialog } from "@/components/dashboard/bulk-import-contributions-dialog";
+import { MyBackdatedContributions } from "@/components/dashboard/my-backdated-contributions";
 import {
   ContributionRecordsTable,
   type ContributionRecordRow,
@@ -36,6 +39,7 @@ import {
   type ActivePlan,
   type RawContributionRecord,
 } from "@/lib/data/contribution-summary";
+import { loadMyBackdatedContributions } from "@/lib/data/backdated-contributions";
 import { getPeriodContaining } from "@/lib/contribution-periods";
 import { requiredAmountForPeriod, sumVerifiedAmount } from "@/lib/contributions";
 import { formatMoney } from "@/lib/money";
@@ -233,9 +237,11 @@ export default async function ContributionsPage({
 
   const currentRole = await getCurrentMembershipRole(groupId);
   const canManage = currentRole !== null && roleHasCapability(currentRole, "record_contributions");
+  const canImportHistory = currentRole !== null && roleHasCapability(currentRole, "import_historical_contributions");
   const today = new Date().toISOString().slice(0, 10);
 
   const myRecords = user ? await loadMyRecords(groupId, user.id) : [];
+  const myBackdatedRecords = user ? await loadMyBackdatedContributions(groupId, user.id) : [];
 
   let plan: ActivePlan | null = null;
   let filteredRecords: (RawContributionRecord & { memberName: string })[] = [];
@@ -265,7 +271,13 @@ export default async function ContributionsPage({
     />
   ) : (
     <div>
-      <div className="mb-4 flex items-center justify-end">
+      <div className="mb-4 flex items-center justify-end gap-2">
+        {canImportHistory ? (
+          <>
+            <BulkImportContributionsDialog groupId={groupId} />
+            <RecordBackdatedContributionDialog groupId={groupId} members={memberOptions} />
+          </>
+        ) : null}
         <RecordContributionDialog groupId={groupId} members={memberOptions} />
       </div>
 
@@ -323,7 +335,10 @@ export default async function ContributionsPage({
   );
 
   const myContent = (
-    <MyContributionsTable plan={plan} records={myRecords} today={today} />
+    <div>
+      <MyBackdatedContributions groupId={groupId} records={myBackdatedRecords} />
+      <MyContributionsTable plan={plan} records={myRecords} today={today} />
+    </div>
   );
 
   return (

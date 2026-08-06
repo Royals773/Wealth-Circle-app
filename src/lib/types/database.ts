@@ -197,6 +197,39 @@ export interface Database {
       >;
       verify_contribution: Fn<{ p_record_id: string }, undefined>;
       reconcile_contribution: Fn<{ p_record_id: string }, undefined>;
+      record_backdated_contribution: Fn<
+        {
+          p_group_id: string;
+          p_member_id: string;
+          p_amount_minor_units: number;
+          p_received_at: string;
+          p_note: string | null;
+          p_confirm_implausible_date: boolean;
+        },
+        { record_id: string; is_backdated: boolean }[]
+      >;
+      bulk_import_contributions: Fn<
+        {
+          p_group_id: string;
+          p_rows: {
+            member_identifier: string;
+            amount_minor_units: number;
+            received_at: string;
+            note: string | null;
+          }[];
+          p_confirm_implausible_dates: boolean;
+          p_dry_run: boolean;
+        },
+        {
+          row_index: number;
+          success: boolean;
+          record_id: string | null;
+          member_identifier: string;
+          is_backdated: boolean | null;
+          error_message: string | null;
+        }[]
+      >;
+      confirm_backdated_contribution: Fn<{ p_record_id: string }, undefined>;
       reject_contribution: Fn<{ p_record_id: string; p_reason: string }, undefined>;
       reverse_contribution: Fn<
         {
@@ -605,6 +638,9 @@ export interface Database {
           created_by: string;
           created_at: string;
           updated_at: string;
+          is_backdated: boolean;
+          confirmed_by: string | null;
+          confirmed_at: string | null;
         },
         {
           group_id: string;
@@ -620,6 +656,7 @@ export interface Database {
           status?: ContributionRecordStatus;
           notes?: string | null;
           created_by: string;
+          is_backdated?: boolean;
         },
         {
           status?: ContributionRecordStatus;
@@ -628,6 +665,8 @@ export interface Database {
           reconciled_by?: string | null;
           reconciled_at?: string | null;
           notes?: string | null;
+          confirmed_by?: string | null;
+          confirmed_at?: string | null;
         }
       >;
       withdrawal_requests: Table<
