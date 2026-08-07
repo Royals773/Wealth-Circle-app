@@ -43,6 +43,8 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -50,85 +52,154 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --shadow-sm: var(--shadow-sm-value);
+  --shadow-md: var(--shadow-md-value);
+  --shadow-lg: var(--shadow-lg-value);
 }
 
+/* =======================================================================
+ * "Warm, trustworthy, human-but-financial" design system — promoted
+ * from the Phase 1 styleguide (src/app/styleguide/page.tsx) after
+ * approval. Was scoped to .warm-preview during Phase 1 so nothing in
+ * the live app changed while it was under review; that scope has now
+ * been removed (not just left redundant) since these are the same
+ * values, live here instead.
+ *
+ * Warmth comes from two decisions, not from saturation:
+ *   1. Every neutral (background/card/muted/border/foreground) shares a
+ *      warm hue (~55-75° in OKLCH — parchment/paper direction) instead
+ *      of the previous cool blue-grey hue (258°).
+ *   2. The primary is a deep, muted terracotta/clay (hue 35) rather
+ *      than navy — restrained (moderate chroma, not a bright orange)
+ *      and deliberately not tied to any specific flag or cultural
+ *      palette.
+ * Semantic colours (success/warning/error) are nudged warmer too;
+ * info stays a deliberately desaturated, muted blue — the one
+ * functional exception, since forcing a fourth semantic state into
+ * the warm family risks visually colliding with warning/success.
+ * ======================================================================= */
 :root {
-  /* Warm neutral paper background with deep-navy text. */
-  --background: oklch(0.985 0.005 80);
-  --foreground: oklch(0.24 0.02 258);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.02 258);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.02 258);
-  /* Deep navy brand primary. */
-  --primary: oklch(0.32 0.075 258);
-  --primary-foreground: oklch(0.98 0.005 80);
-  --secondary: oklch(0.955 0.008 80);
-  --secondary-foreground: oklch(0.28 0.03 258);
-  --muted: oklch(0.955 0.008 80);
-  --muted-foreground: oklch(0.48 0.02 258);
-  --accent: oklch(0.93 0.02 150);
-  --accent-foreground: oklch(0.24 0.03 155);
-  --destructive: oklch(0.55 0.2 27);
-  --success: oklch(0.5 0.11 152);
-  --success-foreground: oklch(0.98 0.01 152);
-  --warning: oklch(0.62 0.15 75);
-  --warning-foreground: oklch(0.2 0.03 80);
-  --border: oklch(0.9 0.008 80);
-  --input: oklch(0.9 0.008 80);
-  --ring: oklch(0.55 0.05 258);
-  --chart-1: oklch(0.32 0.075 258);
-  --chart-2: oklch(0.5 0.11 152);
-  --chart-3: oklch(0.62 0.15 75);
-  --chart-4: oklch(0.55 0.09 258);
-  --chart-5: oklch(0.7 0.03 258);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.19 0.03 258);
-  --sidebar-foreground: oklch(0.96 0.008 80);
-  --sidebar-primary: oklch(0.98 0.005 80);
-  --sidebar-primary-foreground: oklch(0.24 0.03 258);
-  --sidebar-accent: oklch(0.27 0.035 258);
-  --sidebar-accent-foreground: oklch(0.96 0.008 80);
+  --background: oklch(0.984 0.004 75);
+  --foreground: oklch(0.23 0.013 55);
+  --card: oklch(0.997 0.002 75);
+  --card-foreground: oklch(0.23 0.013 55);
+  --popover: oklch(0.997 0.002 75);
+  --popover-foreground: oklch(0.23 0.013 55);
+
+  /* Deep, muted terracotta/clay — the one deliberately "warm" brand
+     moment. Moderate chroma on purpose: premium through restraint,
+     not a bright/saturated orange. */
+  --primary: oklch(0.47 0.105 35);
+  --primary-foreground: oklch(0.985 0.006 75);
+
+  --secondary: oklch(0.955 0.008 72);
+  --secondary-foreground: oklch(0.3 0.02 55);
+  --muted: oklch(0.955 0.008 72);
+  --muted-foreground: oklch(0.49 0.016 60);
+
+  /* Soft warm gold-tinted highlight surface — used sparingly (hover/
+     selected states), not as a second brand colour. */
+  --accent: oklch(0.92 0.035 75);
+  --accent-foreground: oklch(0.32 0.05 55);
+
+  --destructive: oklch(0.53 0.185 27);
+  --destructive-foreground: oklch(0.985 0.01 27);
+  --success: oklch(0.54 0.115 145);
+  --success-foreground: oklch(0.985 0.01 145);
+  --warning: oklch(0.68 0.145 70);
+  --warning-foreground: oklch(0.22 0.03 70);
+  /* Info: the one deliberately-not-warm semantic colour — see note
+     above. Desaturated so it still reads as "quiet," not alarming. */
+  --info: oklch(0.53 0.085 235);
+  --info-foreground: oklch(0.985 0.008 235);
+
+  --border: oklch(0.895 0.011 70);
+  --input: oklch(0.895 0.011 70);
+  --ring: oklch(0.56 0.07 35);
+
+  --chart-1: oklch(0.47 0.105 35);
+  --chart-2: oklch(0.54 0.115 145);
+  --chart-3: oklch(0.68 0.145 70);
+  --chart-4: oklch(0.53 0.085 235);
+  --chart-5: oklch(0.65 0.03 40);
+
+  /* Slightly softer than the previous 0.625rem — warm/approachable
+     without tipping into "bubbly." Every derived --radius-* above
+     recomputes automatically since it's calc(var(--radius) * N). */
+  --radius: 0.75rem;
+
+  /* Warm-tinted, restrained elevation. Colour-tinted with the dark
+     end of the neutral scale instead of pure black, and kept very
+     low-opacity — most surfaces in this app (cards, dialogs) still
+     use ring-1 ring-foreground/10 rather than a shadow at all; these
+     tokens are for the few surfaces (popovers, dropdowns) that do
+     want a soft lift. */
+  --shadow-sm-value: 0 1px 2px 0 oklch(0.25 0.02 50 / 0.06);
+  --shadow-md-value: 0 2px 8px -2px oklch(0.25 0.02 50 / 0.1), 0 1px 2px -1px oklch(0.25 0.02 50 / 0.06);
+  --shadow-lg-value: 0 8px 24px -4px oklch(0.25 0.02 50 / 0.12), 0 2px 6px -2px oklch(0.25 0.02 50 / 0.08);
+
+  /* Warm dark charcoal-brown, not navy — matches the palette instead
+     of sitting apart from it the way the previous cool sidebar did. */
+  --sidebar: oklch(0.22 0.018 50);
+  --sidebar-foreground: oklch(0.96 0.008 75);
+  --sidebar-primary: oklch(0.985 0.006 75);
+  --sidebar-primary-foreground: oklch(0.22 0.018 50);
+  --sidebar-accent: oklch(0.3 0.025 50);
+  --sidebar-accent-foreground: oklch(0.96 0.008 75);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.6 0.05 258);
+  --sidebar-ring: oklch(0.62 0.06 35);
 }
 
 .dark {
-  --background: oklch(0.17 0.02 258);
-  --foreground: oklch(0.96 0.008 80);
-  --card: oklch(0.22 0.025 258);
-  --card-foreground: oklch(0.96 0.008 80);
-  --popover: oklch(0.22 0.025 258);
-  --popover-foreground: oklch(0.96 0.008 80);
-  --primary: oklch(0.78 0.07 258);
-  --primary-foreground: oklch(0.17 0.02 258);
-  --secondary: oklch(0.28 0.025 258);
-  --secondary-foreground: oklch(0.96 0.008 80);
-  --muted: oklch(0.28 0.025 258);
-  --muted-foreground: oklch(0.72 0.02 80);
-  --accent: oklch(0.3 0.04 152);
-  --accent-foreground: oklch(0.93 0.02 140);
-  --destructive: oklch(0.7 0.19 22);
-  --success: oklch(0.72 0.13 152);
-  --success-foreground: oklch(0.17 0.03 152);
-  --warning: oklch(0.78 0.14 80);
-  --warning-foreground: oklch(0.2 0.03 80);
+  --background: oklch(0.19 0.014 50);
+  --foreground: oklch(0.96 0.008 75);
+  --card: oklch(0.235 0.016 50);
+  --card-foreground: oklch(0.96 0.008 75);
+  --popover: oklch(0.235 0.016 50);
+  --popover-foreground: oklch(0.96 0.008 75);
+
+  --primary: oklch(0.72 0.11 40);
+  --primary-foreground: oklch(0.19 0.014 50);
+
+  --secondary: oklch(0.29 0.017 50);
+  --secondary-foreground: oklch(0.96 0.008 75);
+  --muted: oklch(0.29 0.017 50);
+  --muted-foreground: oklch(0.72 0.014 65);
+
+  --accent: oklch(0.33 0.04 70);
+  --accent-foreground: oklch(0.93 0.03 75);
+
+  --destructive: oklch(0.7 0.175 27);
+  --destructive-foreground: oklch(0.17 0.03 27);
+  --success: oklch(0.7 0.13 145);
+  --success-foreground: oklch(0.17 0.03 145);
+  --warning: oklch(0.76 0.135 75);
+  --warning-foreground: oklch(0.2 0.03 75);
+  --info: oklch(0.7 0.09 235);
+  --info-foreground: oklch(0.17 0.03 235);
+
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.6 0.06 258);
-  --chart-1: oklch(0.78 0.07 258);
-  --chart-2: oklch(0.72 0.13 152);
-  --chart-3: oklch(0.78 0.14 80);
-  --chart-4: oklch(0.6 0.09 258);
-  --chart-5: oklch(0.5 0.03 258);
-  --sidebar: oklch(0.15 0.02 258);
-  --sidebar-foreground: oklch(0.96 0.008 80);
-  --sidebar-primary: oklch(0.78 0.07 258);
-  --sidebar-primary-foreground: oklch(0.17 0.02 258);
-  --sidebar-accent: oklch(0.25 0.025 258);
-  --sidebar-accent-foreground: oklch(0.96 0.008 80);
+  --ring: oklch(0.68 0.07 40);
+
+  --chart-1: oklch(0.72 0.11 40);
+  --chart-2: oklch(0.7 0.13 145);
+  --chart-3: oklch(0.76 0.135 75);
+  --chart-4: oklch(0.7 0.09 235);
+  --chart-5: oklch(0.6 0.03 55);
+
+  --shadow-sm-value: 0 1px 2px 0 oklch(0 0 0 / 0.24);
+  --shadow-md-value: 0 2px 8px -2px oklch(0 0 0 / 0.32), 0 1px 2px -1px oklch(0 0 0 / 0.2);
+  --shadow-lg-value: 0 8px 24px -4px oklch(0 0 0 / 0.4), 0 2px 6px -2px oklch(0 0 0 / 0.28);
+
+  --sidebar: oklch(0.16 0.014 50);
+  --sidebar-foreground: oklch(0.96 0.008 75);
+  --sidebar-primary: oklch(0.72 0.11 40);
+  --sidebar-primary-foreground: oklch(0.17 0.014 50);
+  --sidebar-accent: oklch(0.26 0.018 50);
+  --sidebar-accent-foreground: oklch(0.96 0.008 75);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.6 0.06 258);
+  --sidebar-ring: oklch(0.68 0.07 40);
 }
 
 @layer base {

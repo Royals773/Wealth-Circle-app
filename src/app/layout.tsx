@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Manrope, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+// Warm, rounder humanist letterforms than Geist while staying highly
+// legible, with proper tabular figures (font-variant-numeric:
+// tabular-nums, applied per element via Tailwind's tabular-nums
+// utility) for financial amounts. Full weight range for the type
+// scale: 400/500 body and labels, 600/700 headings, 800 display.
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-sans",
+});
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -31,7 +40,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("h-full", "antialiased", geistMono.variable, "font-sans", geist.variable)}
+      className={cn("h-full", "antialiased", geistMono.variable, "font-sans", manrope.variable)}
     >
       <body className="flex min-h-full flex-col bg-background text-foreground" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
