@@ -91,6 +91,7 @@ describe.skipIf(!isConfigured)("tenant isolation and invitation lifecycle (live)
   });
 
   it("creates a group and its owner membership atomically", async () => {
+    await adminClient.from("organiser_applications").insert({ user_id: userAId, status: "approved" });
     const { data, error } = await clientA.rpc("create_group_with_setup", {
       p_name: "Security Test Group A",
       p_slug: `sec-test-group-a-${runId}`,
@@ -107,6 +108,7 @@ describe.skipIf(!isConfigured)("tenant isolation and invitation lifecycle (live)
 
     expect(error).toBeNull();
     groupAId = data?.[0]?.group_id as string;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupAId);
     expect(groupAId).toBeTruthy();
 
     const { data: membership } = await clientA
@@ -127,6 +129,7 @@ describe.skipIf(!isConfigured)("tenant isolation and invitation lifecycle (live)
   });
 
   it("creates a second, independent group for user B", async () => {
+    await adminClient.from("organiser_applications").insert({ user_id: userBId, status: "approved" });
     const { data, error } = await clientB.rpc("create_group_with_setup", {
       p_name: "Security Test Group B",
       p_slug: `sec-test-group-b-${runId}`,
@@ -143,6 +146,7 @@ describe.skipIf(!isConfigured)("tenant isolation and invitation lifecycle (live)
 
     expect(error).toBeNull();
     groupBId = data?.[0]?.group_id as string;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupBId);
     expect(groupBId).toBeTruthy();
   });
 

@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
-import type { GroupRole } from "@/lib/types/database";
+import type { GroupRole, GroupStatus } from "@/lib/types/database";
 
 export interface GroupSummary {
   id: string;
   name: string;
   role: GroupRole;
+  status: GroupStatus;
 }
 
 export type DashboardContext =
@@ -31,7 +32,7 @@ export type DashboardContext =
  */
 export async function getDashboardContext(groupId: string): Promise<DashboardContext> {
   if (!isSupabaseConfigured) {
-    const placeholder: GroupSummary = { id: groupId, name: "Preview group", role: "owner" };
+    const placeholder: GroupSummary = { id: groupId, name: "Preview group", role: "owner", status: "active" };
     return {
       configured: false,
       groupId,
@@ -62,18 +63,19 @@ export async function getDashboardContext(groupId: string): Promise<DashboardCon
 
   const { data: groups } = await supabase
     .from("groups")
-    .select("id, name")
+    .select("id, name, status")
     .in(
       "id",
       membershipRows.map((row) => row.group_id),
     );
 
-  const groupNameById = new Map((groups ?? []).map((group) => [group.id, group.name]));
+  const groupById = new Map((groups ?? []).map((group) => [group.id, group]));
 
   const memberships: GroupSummary[] = membershipRows.map((row) => ({
     id: row.group_id,
-    name: groupNameById.get(row.group_id) ?? "Untitled group",
+    name: groupById.get(row.group_id)?.name ?? "Untitled group",
     role: row.role,
+    status: groupById.get(row.group_id)?.status ?? "active",
   }));
 
   const currentGroup = memberships.find((membership) => membership.id === groupId);

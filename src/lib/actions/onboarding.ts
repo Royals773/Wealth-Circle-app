@@ -106,16 +106,27 @@ export async function createGroupAction(
   const group = data?.[0];
 
   if (error || !group) {
+    // create_group_with_setup() requires an approved organiser
+    // application (see 0024_phase10_platform_authorisation.sql) — this
+    // is the one error worth a more specific, actionable message than
+    // the generic passthrough below.
+    if (error?.message.includes("organiser application")) {
+      return {
+        status: "error",
+        formError: `${error.message} Visit /apply-organiser to apply.`,
+      };
+    }
     return {
       status: "error",
       formError: error?.message ?? "Could not create the group. Please try again.",
     };
   }
 
-  // Invitation links can only ever be shown once — the database stores
-  // only a hash of each token (see docs/security-boundaries.md) — so
-  // rather than redirecting immediately, hand them back to the wizard to
-  // display before the user moves on to the dashboard.
+  // New groups start pending_review (0024_phase10_platform_authorisation.sql)
+  // and no longer send initial invitations at creation time — an
+  // unapproved group must not be able to invite members. invite_links is
+  // now always empty; kept in the return shape for compatibility with
+  // GroupCreatedSummary, which already renders nothing when it's empty.
   const inviteLinks: CreatedInviteLink[] = (group.invite_links ?? []).map((invite) => ({
     email: invite.email,
     role: invite.role,

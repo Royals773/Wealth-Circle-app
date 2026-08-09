@@ -76,6 +76,7 @@ describe.skipIf(!isConfigured)("governance (live)", () => {
     otherOwnerId = otherOwner.id;
     otherOwnerClient = otherOwner.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerId, status: "approved" });
     const { data: group } = await ownerClient.rpc("create_group_with_setup", {
       p_name: "Governance Test Group",
       p_slug: `gov-test-group-${runId}`,
@@ -90,7 +91,9 @@ describe.skipIf(!isConfigured)("governance (live)", () => {
       p_invites: [],
     });
     groupId = group![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: otherOwnerId, status: "approved" });
     const { data: otherGroup } = await otherOwnerClient.rpc("create_group_with_setup", {
       p_name: "Governance Test Other Group",
       p_slug: `gov-test-other-group-${runId}`,
@@ -105,6 +108,7 @@ describe.skipIf(!isConfigured)("governance (live)", () => {
       p_invites: [],
     });
     otherGroupId = otherGroup![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", otherGroupId);
 
     const { data: earlyInvite } = await ownerClient.rpc("create_invitation", {
       p_group_id: groupId,

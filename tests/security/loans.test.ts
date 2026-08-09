@@ -13,15 +13,24 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
-const isConfigured = Boolean(SUPABASE_URL && PUBLISHABLE_KEY && SECRET_KEY);
-
 const runId = Date.now().toString(36);
 const ownerEmail = `wc-loan-test-owner-${runId}@example.com`;
 const memberEmail = `wc-loan-test-member-${runId}@example.com`;
 const otherOwnerEmail = `wc-loan-test-other-${runId}@example.com`;
 const testPassword = "LoanTest123!";
 
-describe.skipIf(!isConfigured)("loan ledger (live)", () => {
+// STALE pending lending legal review: 0021_gate_lending_pending_legal_review.sql
+// revokes EXECUTE on every loan/repayment RPC (apply_for_loan through
+// reverse_repayment) for every role. Nearly every test below depends
+// on a working loan lifecycle built up across the describe block
+// (apply -> decide -> disburse -> repay -> verify -> reconcile ->
+// reverse), which can no longer exist while that gate is active — the
+// very first gated call fails, and every downstream test cascades
+// into undefined-id failures. Skipped wholesale rather than rewritten
+// piecemeal, since almost the entire file would need restructuring to
+// test only what's reachable. Remove this skip (and re-run live) once
+// the legal review resolves and 0021 is lifted.
+describe.skip("loan ledger (live)", () => {
   let adminClient: SupabaseClient;
   let ownerClient: SupabaseClient;
   let memberClient: SupabaseClient;
@@ -66,6 +75,7 @@ describe.skipIf(!isConfigured)("loan ledger (live)", () => {
     otherOwnerId = otherOwner.id;
     otherOwnerClient = otherOwner.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerId, status: "approved" });
     const { data: group } = await ownerClient.rpc("create_group_with_setup", {
       p_name: "Loan Test Group",
       p_slug: `loan-test-group-${runId}`,
@@ -80,7 +90,9 @@ describe.skipIf(!isConfigured)("loan ledger (live)", () => {
       p_invites: [],
     });
     groupId = group![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: otherOwnerId, status: "approved" });
     const { data: otherGroup } = await otherOwnerClient.rpc("create_group_with_setup", {
       p_name: "Loan Test Other Group",
       p_slug: `loan-test-other-group-${runId}`,
@@ -95,6 +107,7 @@ describe.skipIf(!isConfigured)("loan ledger (live)", () => {
       p_invites: [],
     });
     otherGroupId = otherGroup![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", otherGroupId);
 
     const { data: invite } = await ownerClient.rpc("create_invitation", {
       p_group_id: groupId,

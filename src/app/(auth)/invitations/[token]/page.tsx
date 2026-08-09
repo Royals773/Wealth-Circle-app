@@ -19,8 +19,8 @@ interface InvitationPreview {
   groupName: string;
   role: GroupRole;
   email: string;
-  status: "pending" | "accepted" | "revoked" | "expired";
-  expiresAt: string;
+  canAccept: boolean;
+  message: string | null;
 }
 
 type InvitationPreviewResult =
@@ -45,7 +45,12 @@ async function loadInvitationPreview(token: string): Promise<InvitationPreviewRe
   const { data, error } = await supabase.rpc("get_invitation_preview", { p_token: token });
   const row = data?.[0];
 
-  if (error || !row) return { status: "not_found" };
+  // group_name/role/email are only ever null when the invitation
+  // wasn't found at all — every other unavailable case (revoked,
+  // expired, accepted, group suspended/rejected/pending) still returns
+  // them alongside can_accept: false, so the page can show a friendly
+  // "no longer available" message without ever seeing a raw status.
+  if (error || !row || !row.group_name || !row.role || !row.email) return { status: "not_found" };
 
   return {
     status: "found",
@@ -53,8 +58,8 @@ async function loadInvitationPreview(token: string): Promise<InvitationPreviewRe
       groupName: row.group_name,
       role: row.role,
       email: row.email,
-      status: row.status as InvitationPreview["status"],
-      expiresAt: row.expires_at,
+      canAccept: row.can_accept,
+      message: row.message,
     },
   };
 }
@@ -119,22 +124,15 @@ export default async function AcceptInvitationPage({
 
   const invitation = preview.data;
 
-  const isExpired =
-    invitation.status === "expired" || new Date(invitation.expiresAt) < new Date();
-
-  if (invitation.status === "revoked" || invitation.status === "accepted" || isExpired) {
-    const message =
-      invitation.status === "revoked"
-        ? "This invitation has been revoked. Ask the group's owner or administrator for a new one."
-        : invitation.status === "accepted"
-          ? "This invitation has already been used."
-          : "This invitation has expired. Ask the group's owner or administrator to send a new one.";
-
+  if (!invitation.canAccept) {
     return (
       <AuthShell title="Invitation no longer available" description="This link can't be used.">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{message}</AlertDescription>
+          <AlertDescription>
+            {invitation.message ??
+              "This invitation is no longer available. Ask the group's owner or administrator for a new one."}
+          </AlertDescription>
         </Alert>
         <Button asChild className="mt-6 w-full" variant="outline">
           <Link href="/sign-in">Go to sign in</Link>

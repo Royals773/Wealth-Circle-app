@@ -80,6 +80,7 @@ describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
     memberBId = memberB.id;
     memberBClient = memberB.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerAId, status: "approved" });
     const { data: groupA } = await ownerAClient.rpc("create_group_with_setup", {
       p_name: "Backdate Test Group A",
       p_slug: `backdate-test-group-a-${runId}`,
@@ -94,7 +95,9 @@ describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
       p_invites: [],
     });
     groupAId = groupA![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupAId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerBId, status: "approved" });
     const { data: groupB } = await ownerBClient.rpc("create_group_with_setup", {
       p_name: "Backdate Test Group B",
       p_slug: `backdate-test-group-b-${runId}`,
@@ -109,6 +112,7 @@ describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
       p_invites: [],
     });
     groupBId = groupB![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupBId);
 
     async function invite(ownerClient: SupabaseClient, groupId: string, email: string, role: string, memberClient: SupabaseClient) {
       const { data } = await ownerClient.rpc("create_invitation", { p_group_id: groupId, p_email: email, p_role: role });

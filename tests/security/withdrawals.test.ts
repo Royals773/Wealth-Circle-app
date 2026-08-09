@@ -72,6 +72,7 @@ describe.skipIf(!isConfigured)("withdrawal ledger (live)", () => {
     otherOwnerId = otherOwner.id;
     otherOwnerClient = otherOwner.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerId, status: "approved" });
     const { data: group } = await ownerClient.rpc("create_group_with_setup", {
       p_name: "Withdrawal Test Group",
       p_slug: `withdraw-test-group-${runId}`,
@@ -86,7 +87,9 @@ describe.skipIf(!isConfigured)("withdrawal ledger (live)", () => {
       p_invites: [],
     });
     groupId = group![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: otherOwnerId, status: "approved" });
     const { data: otherGroup } = await otherOwnerClient.rpc("create_group_with_setup", {
       p_name: "Withdrawal Test Other Group",
       p_slug: `withdraw-test-other-group-${runId}`,
@@ -101,6 +104,7 @@ describe.skipIf(!isConfigured)("withdrawal ledger (live)", () => {
       p_invites: [],
     });
     otherGroupId = otherGroup![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", otherGroupId);
 
     const { data: adminInvite } = await ownerClient.rpc("create_invitation", {
       p_group_id: groupId,

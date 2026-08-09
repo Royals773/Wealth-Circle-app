@@ -77,6 +77,7 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
     otherOwnerId = otherOwner.id;
     otherOwnerClient = otherOwner.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerId, status: "approved" });
     const { data: group } = await ownerClient.rpc("create_group_with_setup", {
       p_name: "Membership Test Group",
       p_slug: `mem-test-group-${runId}`,
@@ -91,7 +92,9 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
       p_invites: [],
     });
     groupId = group![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: otherOwnerId, status: "approved" });
     const { data: otherGroup } = await otherOwnerClient.rpc("create_group_with_setup", {
       p_name: "Membership Test Other Group",
       p_slug: `mem-test-other-group-${runId}`,
@@ -106,6 +109,7 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
       p_invites: [],
     });
     otherGroupId = otherGroup![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", otherGroupId);
 
     async function invite(email: string, role: string) {
       const { data } = await ownerClient.rpc("create_invitation", {

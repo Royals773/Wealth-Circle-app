@@ -18,7 +18,9 @@ export type GroupRole =
 
 export type MembershipStatus = "active" | "suspended" | "removed";
 
-export type GroupStatus = "active" | "suspended" | "archived";
+export type GroupStatus = "pending_review" | "active" | "rejected" | "suspended" | "archived";
+
+export type OrganiserApplicationStatus = "pending" | "approved" | "rejected" | "suspended";
 
 export type ContributionFrequency =
   | "weekly"
@@ -144,11 +146,11 @@ export interface Database {
       get_invitation_preview: Fn<
         { p_token: string },
         {
-          group_name: string;
-          role: GroupRole;
-          email: string;
-          status: InvitationStatus;
-          expires_at: string;
+          group_name: string | null;
+          role: GroupRole | null;
+          email: string | null;
+          can_accept: boolean;
+          message: string | null;
         }[]
       >;
       accept_invitation: Fn<
@@ -434,6 +436,25 @@ export interface Database {
         { id: string; version: number }[]
       >;
       acknowledge_group_constitution: Fn<{ p_constitution_id: string }, undefined>;
+      is_platform_admin: Fn<Record<string, never>, boolean>;
+      is_group_active: Fn<{ p_group_id: string }, boolean>;
+      is_organiser_approved: Fn<{ p_user_id: string }, boolean>;
+      get_platform_config_int: Fn<{ p_key: string; p_default: number }, number>;
+      set_platform_config_int: Fn<{ p_key: string; p_value: number; p_reason: string | null }, undefined>;
+      apply_for_organiser_status: Fn<{ p_note: string | null }, string>;
+      decide_organiser_application: Fn<
+        { p_user_id: string; p_decision: "approved" | "rejected"; p_reason: string | null },
+        undefined
+      >;
+      suspend_organiser: Fn<{ p_user_id: string; p_reason: string }, undefined>;
+      reactivate_organiser: Fn<{ p_user_id: string; p_reason: string | null }, undefined>;
+      decide_group_review: Fn<
+        { p_group_id: string; p_decision: "active" | "rejected"; p_reason: string | null },
+        undefined
+      >;
+      suspend_group: Fn<{ p_group_id: string; p_reason: string }, undefined>;
+      reactivate_group: Fn<{ p_group_id: string; p_reason: string | null }, undefined>;
+      archive_group: Fn<{ p_group_id: string; p_reason: string | null }, undefined>;
     };
     Tables: {
       profiles: Table<
@@ -1249,6 +1270,45 @@ export interface Database {
           metadata?: Json;
         },
         Record<string, never>
+      >;
+      organiser_applications: Table<
+        {
+          id: string;
+          user_id: string;
+          status: OrganiserApplicationStatus;
+          application_note: string | null;
+          submitted_at: string;
+          decided_by: string | null;
+          decided_at: string | null;
+          decision_reason: string | null;
+          created_at: string;
+        },
+        {
+          user_id: string;
+          status?: OrganiserApplicationStatus;
+          application_note?: string | null;
+        },
+        Record<string, never>
+      >;
+      platform_admins: Table<
+        {
+          user_id: string;
+          granted_by: string | null;
+          granted_at: string;
+          notes: string | null;
+        },
+        { user_id: string; granted_by?: string | null; notes?: string | null },
+        Record<string, never>
+      >;
+      platform_config: Table<
+        {
+          key: string;
+          value: Json;
+          updated_by: string | null;
+          updated_at: string;
+        },
+        { key: string; value: Json; updated_by?: string | null },
+        { value?: Json; updated_by?: string | null }
       >;
     };
   };

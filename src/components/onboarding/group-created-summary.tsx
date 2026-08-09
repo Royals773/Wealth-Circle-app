@@ -51,11 +51,12 @@ export function GroupCreatedSummary({
           <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-success" />
           <div>
             <h2 className="text-lg font-semibold text-foreground">
-              {groupName || "Your group"} is ready
+              {groupName || "Your group"} has been created
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              You&apos;re the owner. You can invite more people any time from the group&apos;s
-              Members page.
+              You&apos;re the owner. It&apos;s now awaiting a quick platform review — once
+              approved, you&apos;ll be able to invite members and record activity from the
+              group&apos;s dashboard.
             </p>
           </div>
         </div>

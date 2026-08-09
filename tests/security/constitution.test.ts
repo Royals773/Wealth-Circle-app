@@ -92,6 +92,7 @@ describe.skipIf(!isConfigured)("group constitutions (live)", () => {
     ownerBId = ownerB.id;
     ownerBClient = ownerB.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerAId, status: "approved" });
     const { data: groupA } = await ownerAClient.rpc("create_group_with_setup", {
       p_name: "Constitution Test Group A",
       p_slug: `constitution-test-group-a-${runId}`,
@@ -106,7 +107,9 @@ describe.skipIf(!isConfigured)("group constitutions (live)", () => {
       p_invites: [],
     });
     groupAId = groupA![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupAId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerBId, status: "approved" });
     const { data: groupB } = await ownerBClient.rpc("create_group_with_setup", {
       p_name: "Constitution Test Group B",
       p_slug: `constitution-test-group-b-${runId}`,
@@ -121,6 +124,7 @@ describe.skipIf(!isConfigured)("group constitutions (live)", () => {
       p_invites: [],
     });
     groupBId = groupB![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupBId);
 
     async function invite(ownerClient: SupabaseClient, groupId: string, email: string, memberClient: SupabaseClient) {
       const { data: invite } = await ownerClient.rpc("create_invitation", {

@@ -74,6 +74,34 @@ export default async function GroupDashboardLayout({
         </div>
       ) : null}
 
+      {context.currentGroup.status !== "active" ? (
+        <div className="mb-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
+          {context.currentGroup.status === "pending_review" ? (
+            <>
+              This group is awaiting platform review before it can become active. You can see
+              existing records, but invitations, contributions, loans, withdrawals and
+              governance actions are paused until it&apos;s approved.
+            </>
+          ) : context.currentGroup.status === "suspended" ? (
+            <>
+              This group has been suspended by a platform administrator. Existing records
+              remain visible, but invitations, contributions, loans, withdrawals and governance
+              actions are paused until it&apos;s reactivated.
+            </>
+          ) : context.currentGroup.status === "rejected" ? (
+            <>
+              This group&apos;s platform review was not approved. Existing records remain
+              visible, but the group cannot be reactivated — create a new group to continue.
+            </>
+          ) : (
+            <>
+              This group has been archived and is read-only. Existing records remain visible,
+              but no new activity can be recorded.
+            </>
+          )}
+        </div>
+      ) : null}
+
       {isBlocked && gate?.current ? (
         <div className="mx-auto max-w-xl py-10">
           <Card className="border-warning/40 bg-warning/10">

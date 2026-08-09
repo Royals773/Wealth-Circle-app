@@ -64,6 +64,7 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
     otherOwnerId = otherOwner.id;
     otherOwnerClient = otherOwner.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerId, status: "approved" });
     const { data: group } = await ownerClient.rpc("create_group_with_setup", {
       p_name: "Notification Test Group",
       p_slug: `notif-test-group-${runId}`,
@@ -78,7 +79,9 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
       p_invites: [],
     });
     groupId = group![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: otherOwnerId, status: "approved" });
     const { data: otherGroup } = await otherOwnerClient.rpc("create_group_with_setup", {
       p_name: "Notification Test Other Group",
       p_slug: `notif-test-other-group-${runId}`,
@@ -93,6 +96,7 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
       p_invites: [],
     });
     otherGroupId = otherGroup![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", otherGroupId);
 
     const { data: invite, error: inviteErr } = await ownerClient.rpc("create_invitation", {
       p_group_id: groupId,
@@ -484,6 +488,7 @@ describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () =>
     schedulerId = scheduler.id;
     schedulerClient = scheduler.client;
 
+    await adminClient.from("organiser_applications").insert({ user_id: ownerId, status: "approved" });
     const { data: group } = await ownerClient.rpc("create_group_with_setup", {
       p_name: "Scheduler Capability Test Group",
       p_slug: `sched-cap-group-${runId}`,
@@ -498,7 +503,9 @@ describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () =>
       p_invites: [],
     });
     groupId = group![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", groupId);
 
+    await adminClient.from("organiser_applications").insert({ user_id: foreignOwnerId, status: "approved" });
     const { data: foreignGroup } = await foreignOwnerClient.rpc("create_group_with_setup", {
       p_name: "Scheduler Capability Foreign Group",
       p_slug: `sched-cap-foreign-${runId}`,
@@ -513,6 +520,7 @@ describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () =>
       p_invites: [],
     });
     foreignGroupId = foreignGroup![0].group_id;
+    await adminClient.from("groups").update({ status: "active" }).eq("id", foreignGroupId);
 
     const { data: invite, error: inviteErr } = await ownerClient.rpc("create_invitation", {
       p_group_id: groupId,

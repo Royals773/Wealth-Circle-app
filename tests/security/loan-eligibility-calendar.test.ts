@@ -191,6 +191,14 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
   // ---------------------------------------------------------------------
   // Part B: apply_for_loan() end-to-end, dates relative to today so the
   // suite stays correct indefinitely.
+  //
+  // STALE pending lending legal review: 0021_gate_lending_pending_legal_review.sql
+  // revokes EXECUTE on apply_for_loan for every role, so every test
+  // below now uniformly receives a permission-denied error regardless
+  // of the eligibility scenario it sets up. The fixture setup (plans,
+  // contributions, periods) is kept intact so the eligibility math can
+  // be re-verified quickly once that gate is lifted — only the
+  // assertions were updated to match current (gated) behaviour.
   // ---------------------------------------------------------------------
   describe("apply_for_loan() overdue-contribution eligibility", () => {
     let ownerClient: SupabaseClient;
@@ -277,6 +285,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
       const owner = await createConfirmedUser(ownerEmail, "Calendar Test Owner");
       ownerClient = owner.client;
 
+      await adminClient.from("organiser_applications").insert({ user_id: owner.id, status: "approved" });
       const { data: group } = await ownerClient.rpc("create_group_with_setup", {
         p_name: "Calendar Eligibility Test Group",
         p_slug: `calendar-elig-${runId}`,
@@ -291,6 +300,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_invites: [],
       });
       fixedGroupId = group![0].group_id;
+      await adminClient.from("groups").update({ status: "active" }).eq("id", fixedGroupId);
 
       // Plan starts 3 full months before today, so "today" falls inside
       // period index 3 (the 4th period), leaving three earlier, fully
@@ -357,7 +367,14 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_term_months: 3,
         p_purpose: "recent joiner test",
       });
-      expect(error).toBeNull();
+      // apply_for_loan is currently blocked entirely by
+      // 0021_gate_lending_pending_legal_review.sql (UK legal/regulatory
+      // review pending) — this only proves the call is rejected at the
+      // grant layer, not that this scenario's eligibility math is
+      // sound. Re-verify the underlying eligibility logic once that
+      // gate is lifted.
+      expect(error).not.toBeNull();
+      expect(error?.message).toMatch(/permission denied/i);
     });
 
     it("blocks a long-standing member with a fully unpaid, already-ended period", async () => {
@@ -381,8 +398,12 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_term_months: 3,
         p_purpose: "unpaid period test",
       });
+      // Same as above: apply_for_loan is blocked entirely by 0021
+      // pending legal review, so this only proves the call is
+      // rejected — not that this specific overdue scenario is what
+      // rejected it.
       expect(error).not.toBeNull();
-      expect(error?.message).toMatch(/overdue contributions/i);
+      expect(error?.message).toMatch(/permission denied/i);
     });
 
     it("still counts an ended period as overdue when only partially paid", async () => {
@@ -410,8 +431,12 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_term_months: 3,
         p_purpose: "partial period test",
       });
+      // Same as above: apply_for_loan is blocked entirely by 0021
+      // pending legal review, so this only proves the call is
+      // rejected — not that this specific overdue scenario is what
+      // rejected it.
       expect(error).not.toBeNull();
-      expect(error?.message).toMatch(/overdue contributions/i);
+      expect(error?.message).toMatch(/permission denied/i);
     });
 
     it("does not let a pending or reversed contribution satisfy a period", async () => {
@@ -441,14 +466,19 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_term_months: 3,
         p_purpose: "unverified period test",
       });
+      // Same as above: apply_for_loan is blocked entirely by 0021
+      // pending legal review, so this only proves the call is
+      // rejected — not that this specific overdue scenario is what
+      // rejected it.
       expect(error).not.toBeNull();
-      expect(error?.message).toMatch(/overdue contributions/i);
+      expect(error?.message).toMatch(/permission denied/i);
     });
 
     it("never blocks a flexible plan with no minimum, however little was paid", async () => {
       const flexEmail = `wc-calendar-flex-owner-${runId}@example.com`;
       const flexOwner = await createConfirmedUser(flexEmail, "Calendar Flex Owner");
 
+      await adminClient.from("organiser_applications").insert({ user_id: flexOwner.id, status: "approved" });
       const { data: flexGroup } = await flexOwner.client.rpc("create_group_with_setup", {
         p_name: "Calendar Flex Test Group",
         p_slug: `calendar-flex-${runId}`,
@@ -463,6 +493,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_invites: [],
       });
       const flexGroupId = flexGroup![0].group_id;
+      await adminClient.from("groups").update({ status: "active" }).eq("id", flexGroupId);
 
       const planStart = addMonths(todayISO(), -3);
       const { data: flexPlan } = await flexOwner.client.rpc("upsert_contribution_plan", {
@@ -507,7 +538,14 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_term_months: 3,
         p_purpose: "flexible no minimum test",
       });
-      expect(error).toBeNull();
+      // apply_for_loan is currently blocked entirely by
+      // 0021_gate_lending_pending_legal_review.sql (UK legal/regulatory
+      // review pending) — this only proves the call is rejected at the
+      // grant layer, not that this scenario's eligibility math is
+      // sound. Re-verify the underlying eligibility logic once that
+      // gate is lifted.
+      expect(error).not.toBeNull();
+      expect(error?.message).toMatch(/permission denied/i);
 
       await adminClient.from("groups").delete().eq("id", flexGroupId);
       await adminClient.auth.admin.deleteUser(flexOwner.id);
@@ -517,6 +555,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
       const flexEmail = `wc-calendar-flexmin-owner-${runId}@example.com`;
       const flexOwner = await createConfirmedUser(flexEmail, "Calendar FlexMin Owner");
 
+      await adminClient.from("organiser_applications").insert({ user_id: flexOwner.id, status: "approved" });
       const { data: flexGroup } = await flexOwner.client.rpc("create_group_with_setup", {
         p_name: "Calendar FlexMin Test Group",
         p_slug: `calendar-flexmin-${runId}`,
@@ -531,6 +570,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_invites: [],
       });
       const flexGroupId = flexGroup![0].group_id;
+      await adminClient.from("groups").update({ status: "active" }).eq("id", flexGroupId);
 
       const planStart = addMonths(todayISO(), -3);
       const { data: flexPlan } = await flexOwner.client.rpc("upsert_contribution_plan", {
@@ -577,8 +617,12 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
         p_term_months: 3,
         p_purpose: "flexible with minimum test",
       });
+      // Same as above: apply_for_loan is blocked entirely by 0021
+      // pending legal review, so this only proves the call is
+      // rejected — not that this specific overdue scenario is what
+      // rejected it.
       expect(error).not.toBeNull();
-      expect(error?.message).toMatch(/overdue contributions/i);
+      expect(error?.message).toMatch(/permission denied/i);
 
       await adminClient.from("groups").delete().eq("id", flexGroupId);
       await adminClient.auth.admin.deleteUser(flexOwner.id);
