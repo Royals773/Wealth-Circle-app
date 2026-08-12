@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/table";
 import { RecordDisbursementDialog } from "@/components/dashboard/record-disbursement-dialog";
 import { MarkDefaultedDialog } from "@/components/dashboard/mark-defaulted-dialog";
+import { LendingDisabledNotice } from "@/components/dashboard/lending-disabled-notice";
+import { LENDING_DISABLED } from "@/lib/lending-gate";
 import { formatMoney } from "@/lib/money";
 import type { LoanDisplayStatus } from "@/lib/loans";
 
@@ -50,6 +52,7 @@ export function LoansTable({ groupId, loans }: { groupId: string; loans: LoanRow
 
   return (
     <div>
+      {LENDING_DISABLED ? <div className="mb-4"><LendingDisabledNotice /></div> : null}
       <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <Table>
           <TableHeader>
@@ -74,12 +77,12 @@ export function LoansTable({ groupId, loans }: { groupId: string; loans: LoanRow
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    {loan.displayStatus === "awaiting_disbursement" ? (
+                    {!LENDING_DISABLED && loan.displayStatus === "awaiting_disbursement" ? (
                       <Button size="sm" onClick={() => setDisbursing(loan)}>
                         Record disbursement
                       </Button>
                     ) : null}
-                    {loan.displayStatus === "active" || loan.displayStatus === "overdue" ? (
+                    {!LENDING_DISABLED && (loan.displayStatus === "active" || loan.displayStatus === "overdue") ? (
                       <Button size="sm" variant="ghost" onClick={() => setDefaulting(loan)}>
                         Mark defaulted
                       </Button>

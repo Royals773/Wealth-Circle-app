@@ -12,7 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RepaymentReasonDialog } from "@/components/dashboard/repayment-reason-dialog";
+import { LendingDisabledNotice } from "@/components/dashboard/lending-disabled-notice";
 import { verifyRepaymentAction, reconcileRepaymentAction } from "@/lib/actions/loans";
+import { LENDING_DISABLED } from "@/lib/lending-gate";
 import { formatMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validations/contributions";
 import type { PaymentMethod, RepaymentStatus } from "@/lib/types/database";
@@ -74,6 +76,7 @@ export function RepaymentsTable({ groupId, repayments }: { groupId: string; repa
 
   return (
     <div>
+      {LENDING_DISABLED ? <div className="mb-4"><LendingDisabledNotice /></div> : null}
       {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
       <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <Table>
@@ -110,7 +113,7 @@ export function RepaymentsTable({ groupId, repayments }: { groupId: string; repa
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      {repayment.status === "pending_verification" ? (
+                      {!LENDING_DISABLED && repayment.status === "pending_verification" ? (
                         <>
                           <Button size="sm" variant="outline" disabled={rowPending} onClick={() => verify(repayment.id)}>
                             Verify
@@ -125,7 +128,7 @@ export function RepaymentsTable({ groupId, repayments }: { groupId: string; repa
                           </Button>
                         </>
                       ) : null}
-                      {repayment.status === "verified" ? (
+                      {!LENDING_DISABLED && repayment.status === "verified" ? (
                         <>
                           <Button
                             size="sm"
@@ -145,7 +148,7 @@ export function RepaymentsTable({ groupId, repayments }: { groupId: string; repa
                           </Button>
                         </>
                       ) : null}
-                      {repayment.status === "reconciled" ? (
+                      {!LENDING_DISABLED && repayment.status === "reconciled" ? (
                         <Button
                           size="sm"
                           variant="ghost"

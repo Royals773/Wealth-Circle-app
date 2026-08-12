@@ -21,6 +21,8 @@ import { applyForLoanAction } from "@/lib/actions/loans";
 import { initialLoanActionState } from "@/lib/actions/action-state";
 import { computeOneTimeFlatInterest, computeLoanRepaymentSchedule } from "@/lib/loans";
 import { majorToMinorUnits, minorToMajorUnits, formatMoney } from "@/lib/money";
+import { LENDING_DISABLED } from "@/lib/lending-gate";
+import { LendingDisabledNotice } from "@/components/dashboard/lending-disabled-notice";
 import type { EligibilityResult } from "@/lib/loan-eligibility";
 import type { ContributionFrequency } from "@/lib/types/database";
 
@@ -71,6 +73,10 @@ export function ApplyForLoanDialog({
   }, [amountMajor, termMonths, currencyCode, interestRateBps, repaymentFrequency]);
 
   const maxAvailableMajor = minorToMajorUnits(eligibility.availableToBorrow, currencyCode);
+
+  if (LENDING_DISABLED) {
+    return <LendingDisabledNotice />;
+  }
 
   if (!eligibility.eligible) {
     return (

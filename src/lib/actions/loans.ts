@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { flushPendingNotificationEmails } from "@/lib/actions/notifications";
+import { LENDING_DISABLED, LENDING_DISABLED_MESSAGE, loanRpcErrorMessage } from "@/lib/lending-gate";
 import {
   disbursementSchema,
   loanApplicationSchema,
@@ -127,6 +128,10 @@ export async function applyForLoanAction(
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
   }
 
+  if (LENDING_DISABLED) {
+    return { status: "error", formError: LENDING_DISABLED_MESSAGE };
+  }
+
   const supabase = await createClient();
   const { data: group } = await supabase
     .from("groups")
@@ -148,7 +153,7 @@ export async function applyForLoanAction(
   });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    return { status: "error", formError: loanRpcErrorMessage(error) };
   }
 
   revalidatePath(`/dashboard/${groupId}/loans`);
@@ -158,11 +163,12 @@ export async function applyForLoanAction(
 
 export async function markUnderReviewAction(groupId: string, applicationId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return { error: NOT_CONFIGURED_MESSAGE };
+  if (LENDING_DISABLED) return { error: LENDING_DISABLED_MESSAGE };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("mark_loan_under_review", { p_application_id: applicationId });
 
-  if (error) return { error: error.message };
+  if (error) return { error: loanRpcErrorMessage(error) };
 
   revalidatePath(`/dashboard/${groupId}/loans`);
   return {};
@@ -173,11 +179,12 @@ export async function cancelLoanApplicationAction(
   applicationId: string,
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return { error: NOT_CONFIGURED_MESSAGE };
+  if (LENDING_DISABLED) return { error: LENDING_DISABLED_MESSAGE };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("cancel_loan_application", { p_application_id: applicationId });
 
-  if (error) return { error: error.message };
+  if (error) return { error: loanRpcErrorMessage(error) };
 
   revalidatePath(`/dashboard/${groupId}/loans`);
   return {};
@@ -204,6 +211,10 @@ export async function decideLoanApplicationAction(
 
   if (!isSupabaseConfigured) {
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
+  }
+
+  if (LENDING_DISABLED) {
+    return { status: "error", formError: LENDING_DISABLED_MESSAGE };
   }
 
   const supabase = await createClient();
@@ -238,7 +249,7 @@ export async function decideLoanApplicationAction(
   });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    return { status: "error", formError: loanRpcErrorMessage(error) };
   }
 
   revalidatePath(`/dashboard/${groupId}/loans`);
@@ -266,6 +277,10 @@ export async function recordDisbursementAction(
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
   }
 
+  if (LENDING_DISABLED) {
+    return { status: "error", formError: LENDING_DISABLED_MESSAGE };
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.rpc("record_disbursement", {
     p_loan_id: loanId,
@@ -275,7 +290,7 @@ export async function recordDisbursementAction(
   });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    return { status: "error", formError: loanRpcErrorMessage(error) };
   }
 
   revalidatePath(`/dashboard/${groupId}/loans`);
@@ -299,11 +314,15 @@ export async function markLoanDefaultedAction(
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
   }
 
+  if (LENDING_DISABLED) {
+    return { status: "error", formError: LENDING_DISABLED_MESSAGE };
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.rpc("mark_loan_defaulted", { p_loan_id: loanId, p_reason: parsed.data.reason });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    return { status: "error", formError: loanRpcErrorMessage(error) };
   }
 
   revalidatePath(`/dashboard/${groupId}/loans`);
@@ -332,6 +351,10 @@ export async function recordRepaymentAction(
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
   }
 
+  if (LENDING_DISABLED) {
+    return { status: "error", formError: LENDING_DISABLED_MESSAGE };
+  }
+
   const supabase = await createClient();
   const { data: loan } = await supabase.from("loans").select("currency_code").eq("id", loanId).maybeSingle();
 
@@ -351,7 +374,7 @@ export async function recordRepaymentAction(
   });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    return { status: "error", formError: loanRpcErrorMessage(error) };
   }
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
@@ -362,11 +385,12 @@ export async function recordRepaymentAction(
 
 export async function verifyRepaymentAction(groupId: string, repaymentId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return { error: NOT_CONFIGURED_MESSAGE };
+  if (LENDING_DISABLED) return { error: LENDING_DISABLED_MESSAGE };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("verify_repayment", { p_repayment_id: repaymentId });
 
-  if (error) return { error: error.message };
+  if (error) return { error: loanRpcErrorMessage(error) };
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
   await flushPendingNotificationEmails();
@@ -375,11 +399,12 @@ export async function verifyRepaymentAction(groupId: string, repaymentId: string
 
 export async function reconcileRepaymentAction(groupId: string, repaymentId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return { error: NOT_CONFIGURED_MESSAGE };
+  if (LENDING_DISABLED) return { error: LENDING_DISABLED_MESSAGE };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("reconcile_repayment", { p_repayment_id: repaymentId });
 
-  if (error) return { error: error.message };
+  if (error) return { error: loanRpcErrorMessage(error) };
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
   return {};
@@ -401,6 +426,10 @@ export async function rejectRepaymentAction(
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
   }
 
+  if (LENDING_DISABLED) {
+    return { status: "error", formError: LENDING_DISABLED_MESSAGE };
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.rpc("reject_repayment", {
     p_repayment_id: repaymentId,
@@ -408,7 +437,7 @@ export async function rejectRepaymentAction(
   });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    return { status: "error", formError: loanRpcErrorMessage(error) };
   }
 
   revalidatePath(`/dashboard/${groupId}/repayments`);
@@ -440,6 +469,10 @@ export async function reverseRepaymentAction(
     return { status: "error", formError: NOT_CONFIGURED_MESSAGE };
   }
 
+  if (LENDING_DISABLED) {
+    return { status: "error", formError: LENDING_DISABLED_MESSAGE };
+  }
+
   const supabase = await createClient();
   let replacement: Record<string, string | number> | null = null;
 
@@ -469,7 +502,7 @@ export async function reverseRepaymentAction(
   });
 
   if (error) {
-    return { status: "error", formError: error.message };
+    return { status: "error", formError: loanRpcErrorMessage(error) };
   }
 
   revalidatePath(`/dashboard/${groupId}/repayments`);

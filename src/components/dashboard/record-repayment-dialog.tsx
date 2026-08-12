@@ -27,6 +27,8 @@ import { recordRepaymentAction } from "@/lib/actions/loans";
 import { initialLoanActionState } from "@/lib/actions/action-state";
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/validations/contributions";
 import { formatMoney } from "@/lib/money";
+import { LENDING_DISABLED } from "@/lib/lending-gate";
+import { LendingDisabledNotice } from "@/components/dashboard/lending-disabled-notice";
 
 export interface LoanOption {
   id: string;
@@ -50,6 +52,10 @@ export function RecordRepaymentDialog({ groupId, loans }: { groupId: string; loa
   const amountMinorEquivalent = selectedLoan ? Math.round(Number(amount) * 100) : 0;
   const willOverpay =
     selectedLoan && amount && amountMinorEquivalent > selectedLoan.outstandingPrincipalMinorUnits;
+
+  if (LENDING_DISABLED) {
+    return <LendingDisabledNotice />;
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

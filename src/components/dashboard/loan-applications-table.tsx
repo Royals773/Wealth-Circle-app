@@ -12,7 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { LoanDecisionDialog } from "@/components/dashboard/loan-decision-dialog";
+import { LendingDisabledNotice } from "@/components/dashboard/lending-disabled-notice";
 import { markUnderReviewAction } from "@/lib/actions/loans";
+import { LENDING_DISABLED } from "@/lib/lending-gate";
 import { formatMoney } from "@/lib/money";
 import type { ContributionFrequency, LoanApplicationStatus } from "@/lib/types/database";
 
@@ -64,6 +66,7 @@ export function LoanApplicationsTable({
 
   return (
     <div>
+      {LENDING_DISABLED ? <div className="mb-4"><LendingDisabledNotice /></div> : null}
       {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
       <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <Table>
@@ -93,12 +96,13 @@ export function LoanApplicationsTable({
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      {application.status === "submitted" ? (
+                      {!LENDING_DISABLED && application.status === "submitted" ? (
                         <Button size="sm" variant="outline" disabled={rowPending} onClick={() => review(application.id)}>
                           Mark under review
                         </Button>
                       ) : null}
-                      {application.status === "submitted" || application.status === "under_review" ? (
+                      {!LENDING_DISABLED &&
+                      (application.status === "submitted" || application.status === "under_review") ? (
                         <Button size="sm" onClick={() => setDecisionFor(application)}>
                           Decide
                         </Button>
