@@ -94,20 +94,20 @@ export function MemberDirectoryTable({
 
       {status === "invited" ? (
         pendingInvitations.length === 0 ? (
-          <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          <p className="rounded-xl border border-border bg-card shadow-sm p-6 text-center text-sm text-muted-foreground">
             No pending invitations.
           </p>
         ) : (
           <PendingInvitationsList groupId={groupId} invitations={pendingInvitations} />
         )
       ) : filtered.length === 0 ? (
-        <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-xl border border-border bg-card shadow-sm p-6 text-center text-sm text-muted-foreground">
           No members match this view.
         </p>
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card sm:block">
+          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-sm sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -172,7 +172,7 @@ export function MemberDirectoryTable({
           {/* Mobile cards */}
           <ul className="space-y-3 sm:hidden">
             {filtered.map((member) => (
-              <li key={member.userId} className="rounded-xl border border-border bg-card p-4">
+              <li key={member.userId} className="rounded-xl border border-border bg-card shadow-sm p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-medium text-foreground">

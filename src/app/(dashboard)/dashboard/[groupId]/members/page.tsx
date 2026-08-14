@@ -90,7 +90,7 @@ export default async function MembersPage({ params }: { params: Promise<{ groupI
             description="Members will appear here once they accept an invitation."
           />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
             <Table>
               <TableHeader>
                 <TableRow>

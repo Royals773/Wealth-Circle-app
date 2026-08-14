@@ -216,7 +216,7 @@ export default async function LoansPage({ params }: { params: Promise<{ groupId:
           <h2 className="mb-3 text-sm font-semibold text-foreground">My loans</h2>
           <div className="space-y-4">
             {myLoansDetail.map((loan) => (
-              <div key={loan.id} className="rounded-xl border border-border bg-card p-4">
+              <div key={loan.id} className="rounded-xl border border-border bg-card shadow-sm p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <Badge variant={loan.displayStatus === "overdue" || loan.displayStatus === "defaulted" ? "destructive" : "secondary"}>
                     {MY_LOAN_STATUS_LABELS[loan.displayStatus]}
@@ -280,7 +280,7 @@ export default async function LoansPage({ params }: { params: Promise<{ groupId:
       {myApplications.length === 0 ? (
         <EmptyState icon={HandCoins} title="No applications yet" description="Loan applications you submit will appear here." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

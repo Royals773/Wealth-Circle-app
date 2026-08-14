@@ -62,7 +62,7 @@ export function Features() {
 
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((feature) => (
-            <div key={feature.title} className="rounded-xl border border-border bg-card p-6">
+            <div key={feature.title} className="rounded-xl border border-border bg-card shadow-sm p-6">
               <feature.icon aria-hidden className="h-6 w-6 text-primary" />
               <h3 className="mt-4 text-base font-semibold text-foreground">{feature.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{feature.description}</p>

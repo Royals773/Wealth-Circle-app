@@ -40,7 +40,7 @@ export function HowItWorks() {
 
         <ol className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((item) => (
-            <li key={item.step} className="rounded-xl border border-border bg-card p-6">
+            <li key={item.step} className="rounded-xl border border-border bg-card shadow-sm p-6">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                 {item.step}
               </span>

@@ -24,7 +24,7 @@ export function PricingSection() {
           </p>
         </div>
 
-        <div className="mt-12 max-w-md rounded-xl border border-border bg-card p-8">
+        <div className="mt-12 max-w-md rounded-xl border border-border bg-card shadow-sm p-8">
           <p className="text-sm font-medium text-muted-foreground">Early access</p>
           <p className="mt-2 text-3xl font-semibold text-foreground">Pricing to be announced</p>
           <p className="mt-2 text-sm text-muted-foreground">

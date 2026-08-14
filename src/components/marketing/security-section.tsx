@@ -44,7 +44,7 @@ export function SecuritySection() {
 
         <div className="mt-12 grid gap-6 sm:grid-cols-2">
           {POINTS.map((point) => (
-            <div key={point.title} className="rounded-xl border border-border bg-card p-6">
+            <div key={point.title} className="rounded-xl border border-border bg-card shadow-sm p-6">
               <point.icon aria-hidden className="h-6 w-6 text-primary" />
               <h3 className="mt-4 text-base font-semibold text-foreground">{point.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{point.description}</p>

@@ -28,7 +28,7 @@ export function MyBackdatedContributions({
         Like the rest of this group&apos;s contribution ledger, these entries are visible to every member of the
         group, not just you.
       </p>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

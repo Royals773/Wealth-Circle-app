@@ -181,7 +181,7 @@ export default async function AuditPage({
       {rows.length === 0 ? (
         <EmptyState icon={ScrollText} title="No matching records" description="Nothing matches these filters." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

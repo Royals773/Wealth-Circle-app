@@ -65,7 +65,7 @@ export function LoanApplicationsTable({
   return (
     <div>
       {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

@@ -162,7 +162,7 @@ function MyContributionsTable({
         <StatCard label="Outstanding this period" value={formatMoney(outstandingTotal, currencyCode)} icon={HandCoins} />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

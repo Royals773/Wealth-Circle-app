@@ -276,7 +276,7 @@ async function MemberDashboard({ groupId, userId, today }: { groupId: string; us
             description="You're caught up on every contribution period so far."
           />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -320,7 +320,7 @@ async function MemberDashboard({ groupId, userId, today }: { groupId: string; us
             description="Once your treasurer records one for you, it will appear here."
           />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
             <Table>
               <TableHeader>
                 <TableRow>
