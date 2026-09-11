@@ -47,6 +47,40 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * The Continue/Create-group button occupies the same footer slot across
+ * steps. It must render as two elements with distinct `key`s (not one
+ * element whose `type` prop flips from "button" to "submit") — otherwise
+ * React reconciles them as the same DOM node, and browsers resolve a
+ * click's default action against that node's *post-render* type. The
+ * step-3-to-4 Continue click would then relabel itself into the submit
+ * button mid-click and silently submit the form (real group creation,
+ * Review screen skipped) in both Chromium and WebKit. See
+ * create-group-wizard.test.tsx for the regression test.
+ */
+export function WizardNextAction({
+  isLastStep,
+  pending,
+  onNext,
+}: {
+  isLastStep: boolean;
+  pending: boolean;
+  onNext: () => void;
+}) {
+  if (!isLastStep) {
+    return (
+      <Button key="continue" type="button" onClick={onNext}>
+        Continue
+      </Button>
+    );
+  }
+  return (
+    <Button key="submit" type="submit" disabled={pending}>
+      {pending ? "Creating group…" : "Create group"}
+    </Button>
+  );
+}
+
 export function CreateGroupWizard() {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -217,19 +251,23 @@ export function CreateGroupWizard() {
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="countryCode">Country</Label>
-              <Select value={countryCode} onValueChange={setCountryCode}>
-                <SelectTrigger id="countryCode" aria-invalid={Boolean(stepErrors.countryCode)}>
-                  <SelectValue placeholder="Select a country" />
-                </SelectTrigger>
-                <SelectContent>
-                  {COUNTRIES.map((country) => (
-                    <SelectItem key={country.code} value={country.code}>
-                      {country.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <input type="hidden" name="countryCode" value={countryCode} />
+              <select
+                id="countryCode"
+                name="countryCode"
+                value={countryCode}
+                onChange={(e) => setCountryCode(e.target.value)}
+                aria-invalid={Boolean(stepErrors.countryCode)}
+                className="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+              >
+                <option value="" disabled>
+                  Select a country
+                </option>
+                {COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
               {stepErrors.countryCode && (
                 <p className="text-sm text-destructive">{stepErrors.countryCode}</p>
               )}
@@ -237,19 +275,23 @@ export function CreateGroupWizard() {
 
             <div className="space-y-2">
               <Label htmlFor="currencyCode">Currency</Label>
-              <Select value={currencyCode} onValueChange={setCurrencyCode}>
-                <SelectTrigger id="currencyCode" aria-invalid={Boolean(stepErrors.currencyCode)}>
-                  <SelectValue placeholder="Select a currency" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CURRENCIES.map((currency) => (
-                    <SelectItem key={currency.code} value={currency.code}>
-                      {currency.name} ({currency.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <input type="hidden" name="currencyCode" value={currencyCode} />
+              <select
+                id="currencyCode"
+                name="currencyCode"
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
+                aria-invalid={Boolean(stepErrors.currencyCode)}
+                className="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+              >
+                <option value="" disabled>
+                  Select a currency
+                </option>
+                {CURRENCIES.map((currency) => (
+                  <option key={currency.code} value={currency.code}>
+                    {currency.name} ({currency.code})
+                  </option>
+                ))}
+              </select>
               {stepErrors.currencyCode && (
                 <p className="text-sm text-destructive">{stepErrors.currencyCode}</p>
               )}
@@ -496,15 +538,11 @@ export function CreateGroupWizard() {
           >
             Back
           </Button>
-          {step < STEP_LABELS.length - 1 ? (
-            <Button type="button" onClick={goNext}>
-              Continue
-            </Button>
-          ) : (
-            <Button type="submit" disabled={pending}>
-              {pending ? "Creating group…" : "Create group"}
-            </Button>
-          )}
+          <WizardNextAction
+            isLastStep={step === STEP_LABELS.length - 1}
+            pending={pending}
+            onNext={goNext}
+          />
         </div>
       </form>
     </div>
