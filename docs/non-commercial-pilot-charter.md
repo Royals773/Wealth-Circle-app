@@ -165,13 +165,8 @@ Organisers running a pilot group are responsible for:
 ## Support process
 
 Pilot participants and organisers should direct questions and problems
-to the product owner directly, through whichever channel the product
-owner has personally given each participant at the time of invitation.
-**This document does not invent a support email address, ticketing
-system, or phone number** — none has been established as of this
-writing. Before the pilot opens, the product owner should confirm and
-communicate the actual channel participants are to use, and that
-channel should be recorded here once it exists.
+to the product owner at **atsu.courage@yahoo.com**. This is the one
+confirmed support channel for the pilot.
 
 ## Incident escalation
 
