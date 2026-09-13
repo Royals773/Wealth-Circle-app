@@ -87,6 +87,10 @@ describe.skipIf(!isConfigured)("tenant isolation and invitation lifecycle (live)
     // `on delete cascade` — see supabase/migrations/0001_init.sql).
     if (groupAId) await adminClient.from("groups").delete().eq("id", groupAId);
     if (groupBId) await adminClient.from("groups").delete().eq("id", groupBId);
+    const orgAppUserIds = [userAId, userBId].filter(Boolean);
+    if (orgAppUserIds.length) {
+      await adminClient.from("organiser_applications").delete().in("user_id", orgAppUserIds);
+    }
     if (userAId) await adminClient.auth.admin.deleteUser(userAId);
     if (userBId) await adminClient.auth.admin.deleteUser(userBId);
   });

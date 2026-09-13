@@ -129,6 +129,9 @@ describe.skipIf(!isConfigured)("platform authorisation (live)", () => {
   afterAll(async () => {
     if (!adminClient) return;
     await adminClient.from("platform_admins").delete().in("user_id", [platformAdminId, otherPlatformAdminId]);
+    if (userIdsToDelete.length) {
+      await adminClient.from("organiser_applications").delete().in("user_id", userIdsToDelete);
+    }
     for (const id of userIdsToDelete) {
       await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
     }

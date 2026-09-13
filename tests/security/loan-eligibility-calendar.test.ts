@@ -339,6 +339,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
       const { data: users } = await adminClient.auth.admin.listUsers();
       for (const user of users.users) {
         if (user.email?.includes(`-${runId}@example.com`) && user.email.startsWith("wc-calendar-")) {
+          await adminClient.from("organiser_applications").delete().eq("user_id", user.id);
           await adminClient.auth.admin.deleteUser(user.id);
         }
       }
@@ -549,6 +550,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
       expect(error?.message).toMatch(/permission denied/i);
 
       await adminClient.from("groups").delete().eq("id", flexGroupId);
+      await adminClient.from("organiser_applications").delete().eq("user_id", flexOwner.id);
       await adminClient.auth.admin.deleteUser(flexOwner.id);
     });
 
@@ -626,6 +628,7 @@ describe.skipIf(!isConfigured)("loan eligibility — exact calendar-period math 
       expect(error?.message).toMatch(/permission denied/i);
 
       await adminClient.from("groups").delete().eq("id", flexGroupId);
+      await adminClient.from("organiser_applications").delete().eq("user_id", flexOwner.id);
       await adminClient.auth.admin.deleteUser(flexOwner.id);
     });
   });

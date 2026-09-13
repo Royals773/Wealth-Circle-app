@@ -115,6 +115,9 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
+    if (createdUserIds.length) {
+      await adminClient.from("organiser_applications").delete().in("user_id", createdUserIds);
+    }
     for (const id of createdUserIds) {
       await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
     }
@@ -550,6 +553,9 @@ describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () =>
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (foreignGroupId) await adminClient.from("groups").delete().eq("id", foreignGroupId);
     if (schedulerId) await adminClient.from("scheduler_capabilities").delete().eq("user_id", schedulerId);
+    if (createdUserIds.length) {
+      await adminClient.from("organiser_applications").delete().in("user_id", createdUserIds);
+    }
     for (const id of createdUserIds) {
       await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
     }

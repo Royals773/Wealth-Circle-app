@@ -200,6 +200,9 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
+    if (createdUserIds.length) {
+      await adminClient.from("organiser_applications").delete().in("user_id", createdUserIds);
+    }
     for (const id of createdUserIds) {
       await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
     }

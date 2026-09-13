@@ -132,6 +132,9 @@ describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
     if (!adminClient) return;
     if (groupAId) await adminClient.from("groups").delete().eq("id", groupAId);
     if (groupBId) await adminClient.from("groups").delete().eq("id", groupBId);
+    if (createdUserIds.length) {
+      await adminClient.from("organiser_applications").delete().in("user_id", createdUserIds);
+    }
     for (const id of createdUserIds) {
       await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
     }
