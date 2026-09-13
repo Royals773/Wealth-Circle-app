@@ -9,6 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -21,7 +22,7 @@ const ownerEmail = `wc-withdraw-test-owner-${runId}@example.com`;
 const adminEmail = `wc-withdraw-test-admin-${runId}@example.com`;
 const memberEmail = `wc-withdraw-test-member-${runId}@example.com`;
 const otherOwnerEmail = `wc-withdraw-test-other-${runId}@example.com`;
-const testPassword = "WithdrawTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("withdrawal ledger (live)", () => {
   let adminClient: SupabaseClient;
@@ -36,6 +37,7 @@ describe.skipIf(!isConfigured)("withdrawal ledger (live)", () => {
   let groupId: string;
   let otherGroupId: string;
   let memberRequestId: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -50,6 +52,7 @@ describe.skipIf(!isConfigured)("withdrawal ledger (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -156,10 +159,9 @@ describe.skipIf(!isConfigured)("withdrawal ledger (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (administratorId) await adminClient.auth.admin.deleteUser(administratorId);
-    if (memberId) await adminClient.auth.admin.deleteUser(memberId);
-    if (otherOwnerId) await adminClient.auth.admin.deleteUser(otherOwnerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   it("does not let a member configure the withdrawal policy", async () => {

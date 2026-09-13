@@ -17,6 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -27,7 +28,7 @@ const isConfigured = Boolean(SUPABASE_URL && PUBLISHABLE_KEY && SECRET_KEY);
 const runId = Date.now().toString(36);
 const userAEmail = `wc-security-test-a-${runId}@example.com`;
 const userBEmail = `wc-security-test-b-${runId}@example.com`;
-const testPassword = "SecurityTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("tenant isolation and invitation lifecycle (live)", () => {
   let adminClient: SupabaseClient;

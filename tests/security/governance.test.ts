@@ -9,6 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -21,7 +22,7 @@ const ownerEmail = `wc-gov-test-owner-${runId}@example.com`;
 const earlyMemberEmail = `wc-gov-test-early-${runId}@example.com`;
 const lateMemberEmail = `wc-gov-test-late-${runId}@example.com`;
 const otherOwnerEmail = `wc-gov-test-other-${runId}@example.com`;
-const testPassword = "GovTest123!";
+const testPassword = generateTestPassword();
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,6 +41,7 @@ describe.skipIf(!isConfigured)("governance (live)", () => {
   let groupId: string;
   let otherGroupId: string;
   let earlyMemberJoinedAt: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -54,6 +56,7 @@ describe.skipIf(!isConfigured)("governance (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -135,10 +138,9 @@ describe.skipIf(!isConfigured)("governance (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (earlyMemberId) await adminClient.auth.admin.deleteUser(earlyMemberId);
-    if (lateMemberId) await adminClient.auth.admin.deleteUser(lateMemberId);
-    if (otherOwnerId) await adminClient.auth.admin.deleteUser(otherOwnerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   it("lets any member create a proposal", async () => {

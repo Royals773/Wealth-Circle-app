@@ -9,6 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -20,7 +21,7 @@ const runId = Date.now().toString(36);
 const ownerEmail = `wc-notif-test-owner-${runId}@example.com`;
 const memberEmail = `wc-notif-test-member-${runId}@example.com`;
 const otherOwnerEmail = `wc-notif-test-other-${runId}@example.com`;
-const testPassword = "NotifTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("notifications (live)", () => {
   let adminClient: SupabaseClient;
@@ -32,6 +33,7 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
   let otherOwnerId: string;
   let groupId: string;
   let otherGroupId: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -46,6 +48,7 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -112,9 +115,9 @@ describe.skipIf(!isConfigured)("notifications (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (memberId) await adminClient.auth.admin.deleteUser(memberId);
-    if (otherOwnerId) await adminClient.auth.admin.deleteUser(otherOwnerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   it("creates a real notification row as a side effect of a lifecycle RPC", async () => {
@@ -443,9 +446,10 @@ describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () =>
   let schedulerId: string;
   let groupId: string;
   let foreignGroupId: string;
+  const createdUserIds: string[] = [];
 
   const runId = Date.now().toString(36) + "-sched";
-  const testPassword = "SchedCapTest123!";
+  const testPassword = generateTestPassword();
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -460,6 +464,7 @@ describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () =>
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -545,11 +550,9 @@ describe.skipIf(!isConfigured)("scheduler email capability (Phase 9 fix)", () =>
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (foreignGroupId) await adminClient.from("groups").delete().eq("id", foreignGroupId);
     if (schedulerId) await adminClient.from("scheduler_capabilities").delete().eq("user_id", schedulerId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (memberId) await adminClient.auth.admin.deleteUser(memberId);
-    if (bareOutsiderId) await adminClient.auth.admin.deleteUser(bareOutsiderId);
-    if (foreignOwnerId) await adminClient.auth.admin.deleteUser(foreignOwnerId);
-    if (schedulerId) await adminClient.auth.admin.deleteUser(schedulerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   async function createTestNotification(dedupeKey: string) {

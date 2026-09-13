@@ -17,6 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -29,7 +30,7 @@ const ownerAEmail = `wc-constitution-test-ownera-${runId}@example.com`;
 const memberAEmail = `wc-constitution-test-membera-${runId}@example.com`;
 const member2AEmail = `wc-constitution-test-member2a-${runId}@example.com`;
 const ownerBEmail = `wc-constitution-test-ownerb-${runId}@example.com`;
-const testPassword = "ConstitutionTest123!";
+const testPassword = generateTestPassword();
 
 // A minimal but genuinely valid one-page PDF (not a stub with only the
 // magic bytes) — real content, so Storage actually stores real PDF
@@ -56,6 +57,7 @@ describe.skipIf(!isConfigured)("group constitutions (live)", () => {
   let groupAId: string;
   let groupBId: string;
   const uploadedPaths: string[] = [];
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -70,6 +72,7 @@ describe.skipIf(!isConfigured)("group constitutions (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -146,10 +149,9 @@ describe.skipIf(!isConfigured)("group constitutions (live)", () => {
     }
     if (groupAId) await adminClient.from("groups").delete().eq("id", groupAId);
     if (groupBId) await adminClient.from("groups").delete().eq("id", groupBId);
-    if (ownerAId) await adminClient.auth.admin.deleteUser(ownerAId);
-    if (memberAId) await adminClient.auth.admin.deleteUser(memberAId);
-    if (member2AId) await adminClient.auth.admin.deleteUser(member2AId);
-    if (ownerBId) await adminClient.auth.admin.deleteUser(ownerBId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   let constitutionAV1Id: string;

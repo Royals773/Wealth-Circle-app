@@ -16,6 +16,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -29,7 +30,7 @@ const treasurerEmail = `wc-report-test-treasurer-${runId}@example.com`;
 const loanOfficerEmail = `wc-report-test-loanofficer-${runId}@example.com`;
 const memberEmail = `wc-report-test-member-${runId}@example.com`;
 const otherOwnerEmail = `wc-report-test-other-${runId}@example.com`;
-const testPassword = "ReportTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("reports (live)", () => {
   let adminClient: SupabaseClient;
@@ -46,6 +47,7 @@ describe.skipIf(!isConfigured)("reports (live)", () => {
   let groupId: string;
   let otherGroupId: string;
   let contributionRecordId: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -60,6 +62,7 @@ describe.skipIf(!isConfigured)("reports (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -158,11 +161,9 @@ describe.skipIf(!isConfigured)("reports (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (treasurerId) await adminClient.auth.admin.deleteUser(treasurerId);
-    if (loanOfficerId) await adminClient.auth.admin.deleteUser(loanOfficerId);
-    if (memberId) await adminClient.auth.admin.deleteUser(memberId);
-    if (otherOwnerId) await adminClient.auth.admin.deleteUser(otherOwnerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   it("lets a treasurer (a full-visibility role) read every member's contribution records for the group", async () => {

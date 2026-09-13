@@ -17,6 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -30,7 +31,7 @@ const otherAdminEmail = `wc-plat-test-otheradmin-${runId}@example.com`;
 const applicantEmail = `wc-plat-test-applicant-${runId}@example.com`;
 const ownerEmail = `wc-plat-test-owner-${runId}@example.com`;
 const memberEmail = `wc-plat-test-member-${runId}@example.com`;
-const testPassword = "PlatTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("platform authorisation (live)", () => {
   let adminClient: SupabaseClient;
@@ -54,10 +55,10 @@ describe.skipIf(!isConfigured)("platform authorisation (live)", () => {
       user_metadata: { full_name: fullName },
     });
     if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+    userIdsToDelete.push(data.user.id);
     const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
     const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
     if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
-    userIdsToDelete.push(data.user.id);
     return { id: data.user.id, client };
   }
 

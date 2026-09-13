@@ -8,6 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -17,7 +18,7 @@ const runId = Date.now().toString(36);
 const ownerEmail = `wc-loan-test-owner-${runId}@example.com`;
 const memberEmail = `wc-loan-test-member-${runId}@example.com`;
 const otherOwnerEmail = `wc-loan-test-other-${runId}@example.com`;
-const testPassword = "LoanTest123!";
+const testPassword = generateTestPassword();
 
 // STALE pending lending legal review: 0021_gate_lending_pending_legal_review.sql
 // revokes EXECUTE on every loan/repayment RPC (apply_for_loan through
@@ -43,6 +44,7 @@ describe.skip("loan ledger (live)", () => {
   let memberApplicationId: string;
   let memberLoanId: string;
   let memberRepaymentId: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -57,6 +59,7 @@ describe.skip("loan ledger (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -164,9 +167,9 @@ describe.skip("loan ledger (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (memberId) await adminClient.auth.admin.deleteUser(memberId);
-    if (otherOwnerId) await adminClient.auth.admin.deleteUser(otherOwnerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   it("lets an owner configure the loan policy", async () => {

@@ -9,6 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -23,7 +24,7 @@ const member2AEmail = `wc-backdate-test-member2a-${runId}@example.com`;
 const treasurerAEmail = `wc-backdate-test-treasurera-${runId}@example.com`;
 const ownerBEmail = `wc-backdate-test-ownerb-${runId}@example.com`;
 const memberBEmail = `wc-backdate-test-memberb-${runId}@example.com`;
-const testPassword = "BackdateTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
   let adminClient: SupabaseClient;
@@ -41,6 +42,7 @@ describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
   let memberBId: string;
   let groupAId: string;
   let groupBId: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -55,6 +57,7 @@ describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -129,8 +132,8 @@ describe.skipIf(!isConfigured)("back-dated contribution import (live)", () => {
     if (!adminClient) return;
     if (groupAId) await adminClient.from("groups").delete().eq("id", groupAId);
     if (groupBId) await adminClient.from("groups").delete().eq("id", groupBId);
-    for (const id of [ownerAId, memberAId, member2AId, treasurerAId, ownerBId, memberBId]) {
-      if (id) await adminClient.auth.admin.deleteUser(id);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
     }
   });
 

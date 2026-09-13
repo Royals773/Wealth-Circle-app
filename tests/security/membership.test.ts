@@ -8,6 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -21,7 +22,7 @@ const adminEmail = `wc-mem-test-admin-${runId}@example.com`;
 const targetEmail = `wc-mem-test-target-${runId}@example.com`;
 const loanMemberEmail = `wc-mem-test-loanmember-${runId}@example.com`;
 const otherOwnerEmail = `wc-mem-test-otherowner-${runId}@example.com`;
-const testPassword = "MemTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("member and role management (live)", () => {
   let adminClient: SupabaseClient;
@@ -37,6 +38,7 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
   let otherOwnerId: string;
   let groupId: string;
   let otherGroupId: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -51,6 +53,7 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -197,11 +200,9 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (administratorId) await adminClient.auth.admin.deleteUser(administratorId);
-    if (targetId) await adminClient.auth.admin.deleteUser(targetId);
-    if (loanMemberId) await adminClient.auth.admin.deleteUser(loanMemberId);
-    if (otherOwnerId) await adminClient.auth.admin.deleteUser(otherOwnerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   it("requires a non-empty reason to change a member's role", async () => {

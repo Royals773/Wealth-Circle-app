@@ -14,6 +14,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateTestPassword } from "./test-fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -27,7 +28,7 @@ const treasurerEmail = `wc-audit-test-treasurer-${runId}@example.com`;
 const auditorEmail = `wc-audit-test-auditor-${runId}@example.com`;
 const memberEmail = `wc-audit-test-member-${runId}@example.com`;
 const otherOwnerEmail = `wc-audit-test-other-${runId}@example.com`;
-const testPassword = "AuditTest123!";
+const testPassword = generateTestPassword();
 
 describe.skipIf(!isConfigured)("audit log (live)", () => {
   let adminClient: SupabaseClient;
@@ -44,6 +45,7 @@ describe.skipIf(!isConfigured)("audit log (live)", () => {
   let groupId: string;
   let otherGroupId: string;
   let sampleAuditId: string;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -58,6 +60,7 @@ describe.skipIf(!isConfigured)("audit log (live)", () => {
         user_metadata: { full_name: fullName },
       });
       if (error || !data.user) throw new Error(`Failed to create ${email}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
       const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await client.auth.signInWithPassword({ email, password: testPassword });
       if (signInErr) throw new Error(`Failed to sign in ${email}: ${signInErr.message}`);
@@ -158,11 +161,9 @@ describe.skipIf(!isConfigured)("audit log (live)", () => {
     if (!adminClient) return;
     if (groupId) await adminClient.from("groups").delete().eq("id", groupId);
     if (otherGroupId) await adminClient.from("groups").delete().eq("id", otherGroupId);
-    if (ownerId) await adminClient.auth.admin.deleteUser(ownerId);
-    if (treasurerId) await adminClient.auth.admin.deleteUser(treasurerId);
-    if (auditorId) await adminClient.auth.admin.deleteUser(auditorId);
-    if (memberId) await adminClient.auth.admin.deleteUser(memberId);
-    if (otherOwnerId) await adminClient.auth.admin.deleteUser(otherOwnerId);
+    for (const id of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(id).catch(() => undefined);
+    }
   });
 
   it("lets the owner and auditor read the group's audit log", async () => {
