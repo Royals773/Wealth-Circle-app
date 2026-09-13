@@ -142,7 +142,7 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-17 | Treasurer imports a CSV of contributions, including at least one intentionally malformed row. | Valid rows import correctly; malformed rows are rejected with a clear error, not silently dropped or partially applied. | | | | | | | | |
+| PA-17 | Organiser or administrator imports a CSV of contributions, including at least one intentionally malformed row. | Valid rows import correctly; malformed rows are rejected with a clear error, not silently dropped or partially applied. | | | | | | | | |
 
 ### 18. Withdrawals
 
