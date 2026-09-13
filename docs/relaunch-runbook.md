@@ -17,6 +17,64 @@ own safety checks. This runbook is the fix: the technical steps proven
 correct that night, gated explicitly on the two things that actually
 still need to happen.
 
+This historical record — including the 2026-08-06 exposure above and
+the product owner's prior decision (recorded in
+[legal-regulatory-review.md](./legal-regulatory-review.md#launch-gate))
+to proceed with a full public launch, lending included, without a
+written legal opinion on file — is preserved here unedited. Nothing in
+this document, including the pilot-scope note below, revises or
+removes that record.
+
+## Scope: this runbook governs commercial/public relaunch only
+
+This entire document — every precondition, every step, every rollback
+procedure below — describes the **commercial or public relaunch** of
+WealthCircle: a production deployment (`main`, `wealth-circle-app-seven.vercel.app`
+or a chosen production domain, Deployment Protection removed) that the
+general public, or paying/registered customers, can reach. **None of
+it applies to, is satisfied by, or is a step toward, the separate
+controlled non-commercial pilot** described in
+[non-commercial-pilot-charter.md](./non-commercial-pilot-charter.md).
+
+The pilot:
+
+- Runs on `staging`, invitation-only, never on `main` or a public
+  production domain.
+- Does not go through Steps 1–7 below. Nothing in the pilot removes
+  Deployment Protection for public reach, points a public domain at a
+  deployment, or merges to `main`.
+- Does not, by itself, satisfy any box in "Preconditions" below. A
+  successful pilot is evidence the product owner can use when later
+  deciding whether to pursue commercial launch — it is not a
+  substitute for the legal opinion, incorporation, or any other
+  precondition.
+- Keeps lending technically disabled throughout, via the same gate
+  (`supabase/migrations/0021_gate_lending_pending_legal_review.sql`
+  and the `LENDING_DISABLED` application flag) referenced in Step 2
+  below. Nothing about running the pilot enables lending; only a
+  **separate, explicit, written instruction** from the product owner,
+  following the process in Step 2, can do that — and Step 2 remains
+  gated on the legal opinion regardless of pilot outcome.
+
+**On the legal/regulatory precondition specifically**: for the purpose
+of opening the pilot, the product owner has instructed that
+legal/regulatory issues relevant to running a controlled,
+invitation-only, non-commercial, non-lending pilot are addressed. That
+instruction is recorded here as the product owner's own instruction —
+it is not a claim, made by this document or anyone maintaining it,
+that a written legal opinion on the lending question has been obtained
+or that
+[legal-regulatory-review.md](./legal-regulatory-review.md) has changed
+status. That file's own recorded status governs the actual
+Preconditions checkbox below, unedited by this note. No solicitor,
+opinion date, or regulatory conclusion is asserted anywhere in this
+document beyond what that file already records.
+
+**On incorporation**: incorporation remains deliberately deferred for
+the pilot (see the charter) and is unaffected by this note.
+WealthCircle is not incorporated. This document does not claim
+otherwise, and the pilot does not authorise commercial operation.
+
 ## Preconditions — every box must be checked before Step 1
 
 - [ ] **UK legal/regulatory opinion obtained and recorded** in
