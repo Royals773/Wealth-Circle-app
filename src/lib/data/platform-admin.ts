@@ -8,6 +8,7 @@ export interface PendingGroupReview {
   slug: string;
   status: GroupStatus;
   createdAt: string;
+  ownerId: string;
   ownerEmail: string | null;
 }
 
@@ -53,6 +54,7 @@ export async function loadPendingGroupReviews(): Promise<PendingGroupReview[]> {
     slug: g.slug,
     status: g.status,
     createdAt: g.created_at,
+    ownerId: g.created_by,
     ownerEmail: emailById.get(g.created_by) ?? null,
   }));
 }
@@ -77,6 +79,7 @@ export async function loadActiveGroupsForModeration(): Promise<PendingGroupRevie
     slug: g.slug,
     status: g.status,
     createdAt: g.created_at,
+    ownerId: g.created_by,
     ownerEmail: emailById.get(g.created_by) ?? null,
   }));
 }

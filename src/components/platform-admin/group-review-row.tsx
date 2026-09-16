@@ -11,12 +11,14 @@ export function GroupReviewRow({
   groupId,
   name,
   slug,
+  ownerId,
   ownerEmail,
   createdAt,
 }: {
   groupId: string;
   name: string;
   slug: string;
+  ownerId: string;
   ownerEmail: string | null;
   createdAt: string;
 }) {
@@ -56,7 +58,8 @@ export function GroupReviewRow({
           {name} <span className="text-muted-foreground">/{slug}</span>
         </p>
         <p className="text-sm text-muted-foreground">
-          Created by {ownerEmail ?? "unknown"} on {new Date(createdAt).toLocaleDateString()}
+          Created by {ownerEmail ?? `User ${ownerId.slice(0, 8)}…`} on{" "}
+          {new Date(createdAt).toLocaleDateString()}
         </p>
       </div>
       {error ? (

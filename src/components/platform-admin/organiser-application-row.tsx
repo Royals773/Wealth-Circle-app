@@ -7,6 +7,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import { decideOrganiserApplicationAction } from "@/lib/actions/platform-admin";
 
+/**
+ * Never renders a bare "Unnamed": falls back from full name to email to
+ * a shortened, non-secret UID, so a reviewer always has some way to
+ * identify who they're deciding on even if profile data is thin.
+ */
+export function applicantIdentityLabel(fullName: string | null, email: string | null, userId: string): string {
+  return fullName ?? email ?? `User ${userId.slice(0, 8)}…`;
+}
+
 export function OrganiserApplicationRow({
   userId,
   email,
@@ -41,17 +50,19 @@ export function OrganiserApplicationRow({
   if (done) {
     return (
       <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
-        {fullName ?? email ?? userId} has been reviewed.
+        {applicantIdentityLabel(fullName, email, userId)} has been reviewed.
       </div>
     );
   }
 
+  const showEmailSeparately = Boolean(fullName && email);
+
   return (
     <div className="space-y-3 rounded-lg border border-border p-4">
       <div>
-        <p className="font-medium text-foreground">{fullName ?? "Unnamed"}</p>
+        <p className="font-medium text-foreground">{applicantIdentityLabel(fullName, email, userId)}</p>
         <p className="text-sm text-muted-foreground">
-          {email} · Applied {new Date(submittedAt).toLocaleDateString()}
+          {showEmailSeparately ? `${email} · ` : ""}Applied {new Date(submittedAt).toLocaleDateString()}
         </p>
         {applicationNote ? (
           <p className="mt-2 text-sm text-foreground">&ldquo;{applicationNote}&rdquo;</p>
