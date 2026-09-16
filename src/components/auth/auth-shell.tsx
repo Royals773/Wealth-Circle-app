@@ -24,7 +24,7 @@ export function AuthShell({
           <span className="text-lg tracking-tight">WealthCircle</span>
         </Link>
 
-        <div className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-sm">
+        <div className="w-full max-w-md rounded-xl bg-card p-8 shadow-md ring-1 ring-foreground/10">
           <div className="mb-6 text-center">
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
             {description ? (

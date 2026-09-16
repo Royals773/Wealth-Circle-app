@@ -28,7 +28,7 @@ export default async function ApplyOrganiserPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.75rem]">
           Apply to become an organiser
         </h1>
         <p className="mt-2 text-muted-foreground">

@@ -38,7 +38,7 @@ export function Hero() {
 
         <div
           aria-hidden
-          className="rounded-xl border border-border bg-card p-6 shadow-sm"
+          className="rounded-xl bg-card p-6 shadow-md ring-1 ring-foreground/10"
         >
           <div className="flex items-center justify-between border-b border-border pb-4">
             <div>

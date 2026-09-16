@@ -5,7 +5,7 @@ export function CtaSection() {
   return (
     <section aria-labelledby="cta-heading">
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
-        <div className="rounded-2xl bg-primary px-6 py-12 text-center text-primary-foreground sm:px-12">
+        <div className="rounded-2xl bg-primary px-6 py-12 text-center text-primary-foreground shadow-lg sm:px-12">
           <h2 id="cta-heading" className="text-3xl font-semibold tracking-tight">
             Ready to bring clarity to your group&apos;s finances?
           </h2>
