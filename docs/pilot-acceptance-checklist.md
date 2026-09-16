@@ -76,19 +76,19 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-06 | Approved organiser completes the create-group wizard (details, contributions, rules, invites, review) and submits. | Group is created with the exact submitted details; organiser lands on the group/pending-approval view. | | | | | | | | |
+| PA-06 | Approved organiser completes the create-group wizard (details, contributions, rules, invites, review) and submits. | Group is created with the exact submitted details; organiser lands on the group/pending-approval view. | Courage Sewonyadzi | 2026-09-16 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real UI created exactly one group ("Wealth Circle Pilot Group B") with GH/GHS, a fixed 100.00 GHS monthly contribution plan, January financial year start, one owner membership, `status: pending_review`, one `group_created` audit row, and zero invitations. First submission attempt was correctly rejected — see readiness doc for the atomic, non-defect cause. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §8 | | |
 
 ### 7. Country/currency persistence
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-07 | In the create-group wizard, leave Country/Currency unset, attempt Continue, then set them, navigate back and change them, then reach Review. | Validation blocks continuing while unset; Review always reflects the currently selected Country/Currency; the created group's stored country/currency match the final selection exactly (one value each, no duplication). | | | | | | | | |
+| PA-07 | In the create-group wizard, leave Country/Currency unset, attempt Continue, then set them, navigate back and change them, then reach Review. | Validation blocks continuing while unset; Review always reflects the currently selected Country/Currency; the created group's stored country/currency match the final selection exactly (one value each, no duplication). | Courage Sewonyadzi | 2026-09-16 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | Ghana/GHS survived Back → Continue navigation in the real wizard, appeared correctly on the Review step, and persisted exactly as `country_code: GH`, `currency_code: GHS` on the created group — one value each, no duplication. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §8 | | |
 
 ### 8. Group approval
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-08 | Platform admin reviews and approves (or rejects) the newly created group. | Group status updates correctly; members can only be invited/join once approved. | | | | | | | | |
+| PA-08 | Platform admin reviews and approves (or rejects) the newly created group. | Group status updates correctly; members can only be invited/join once approved. | Courage Sewonyadzi | 2026-09-16 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real platform-admin UI changed "Wealth Circle Pilot Group B" from `pending_review` to `active`. The approval reason persisted exactly in the single new `group_approved` audit entry (`groups` itself has no reviewer/reason columns). No unintended membership, contribution-plan, invitation, notification, or financial/governance/lending record was created. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §8 | | |
 
 ### 9. Member invitation
 
@@ -190,7 +190,7 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-25 | A member of Group A attempts to view or act on Group B's data (direct URL, API, or switching context) without a membership in Group B. | Access is denied at the data layer; no Group B data is visible to the Group A member under any circumstance. | | | | | | | | |
+| PA-25 | A member of Group A attempts to view or act on Group B's data (direct URL, API, or switching context) without a membership in Group B. | Access is denied at the data layer; no Group B data is visible to the Group A member under any circumstance. | Courage Sewonyadzi | 2026-09-16 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | The Group A-only owner was redirected away from all three direct Group B routes tested (root, members, settings). Database-level RLS simulation independently returned zero Group B rows across groups/memberships/contribution plans. A `create_invitation` authorization probe against Group B was rejected with `P0001: Only group owners and administrators can create invitations` before any mutation, transaction rolled back and verified empty. Complete before/after state comparison showed zero changes anywhere. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §8 | | |
 
 ### 26. Lending-disabled verification
 
@@ -216,7 +216,7 @@ Result** once any defect is fixed.
 
 | Total scenarios | Passed | Failed (open) | Failed (P0/P1, blocking) | Failed (P2/P3, non-blocking) |
 |---|---|---|---|---|
-| 28 (baseline; add rows as needed) | 10 (PA-01, PA-02, PA-03, PA-04, PA-05, PA-09, PA-10, PA-11, PA-12, PA-26) | 0 | 0 | 0 |
+| 28 (baseline; add rows as needed) | 14 (PA-01, PA-02, PA-03, PA-04, PA-05, PA-06, PA-07, PA-08, PA-09, PA-10, PA-11, PA-12, PA-25, PA-26) | 0 | 0 | 0 |
 
 The pilot must not open while the "Failed (P0/P1, blocking)" column is
 non-zero.
