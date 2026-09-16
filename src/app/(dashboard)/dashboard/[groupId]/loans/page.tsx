@@ -16,10 +16,12 @@ import {
 import { ApplyForLoanDialog } from "@/components/dashboard/apply-for-loan-dialog";
 import { LoanApplicationsTable } from "@/components/dashboard/loan-applications-table";
 import { LoansTable } from "@/components/dashboard/loans-table";
+import { LendingDisabledNotice } from "@/components/dashboard/lending-disabled-notice";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
 import { roleHasCapability } from "@/lib/permissions";
+import { LENDING_DISABLED } from "@/lib/lending-gate";
 import { computeEligibility } from "@/lib/loan-eligibility";
 import {
   loadActiveLoanProduct,
@@ -34,6 +36,9 @@ import type { LoanDisplayStatus } from "@/lib/loans";
 import type { LoanApplicationStatus } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "Loans" };
+
+const LOANS_UNAVAILABLE_MESSAGE =
+  "Lending is currently unavailable. Loan applications cannot be submitted while lending is disabled.";
 
 interface MyApplicationRow {
   id: string;
@@ -79,6 +84,11 @@ export default async function LoansPage({ params }: { params: Promise<{ groupId:
           title="Loans"
           description="Review loan applications and track active loans from disbursement to final repayment."
         />
+        {LENDING_DISABLED ? (
+          <div className="mb-6">
+            <LendingDisabledNotice message={LOANS_UNAVAILABLE_MESSAGE} />
+          </div>
+        ) : null}
         <EmptyState
           icon={HandCoins}
           title="No loans yet"
@@ -278,7 +288,15 @@ export default async function LoansPage({ params }: { params: Promise<{ groupId:
 
       <h2 className="mb-3 text-sm font-semibold text-foreground">My applications</h2>
       {myApplications.length === 0 ? (
-        <EmptyState icon={HandCoins} title="No applications yet" description="Loan applications you submit will appear here." />
+        <EmptyState
+          icon={HandCoins}
+          title="No applications yet"
+          description={
+            LENDING_DISABLED
+              ? "No applications can be submitted while lending is disabled."
+              : "Loan applications you submit will appear here."
+          }
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
           <Table>
@@ -316,6 +334,12 @@ export default async function LoansPage({ params }: { params: Promise<{ groupId:
         title="Loans"
         description="Review loan applications and track active loans from disbursement to final repayment."
       />
+
+      {LENDING_DISABLED ? (
+        <div className="mb-6">
+          <LendingDisabledNotice message={LOANS_UNAVAILABLE_MESSAGE} />
+        </div>
+      ) : null}
 
       {canReview ? (
         <Tabs defaultValue="overview">
