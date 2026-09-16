@@ -867,4 +867,74 @@ describe.skipIf(!isConfigured)("platform authorisation (live)", () => {
 
     await adminClient.from("groups").delete().eq("id", groupId);
   });
+
+  // -----------------------------------------------------------------
+  // profiles visibility for platform admins (0026 fix)
+  //
+  // Found live during PA-05: a platform admin reviewing an organiser
+  // application from someone they don't already share a group with got
+  // zero rows back from a plain profiles select, silently rendering as
+  // "Unnamed" with a blank email in the UI — profiles_select_self_or_groupmate
+  // was the only SELECT policy on profiles, with no platform-admin path
+  // (unlike groups/organiser_applications/audit_logs, which each already
+  // had one). These tests require migration 0026 to be applied to the
+  // target project; the platform-admin and groupmate/anon/self cases
+  // that rely on it fail against a database that predates it.
+  //
+  // "An ordinary authenticated user without a shared group cannot read
+  // an unrelated profile" is already covered and not duplicated here:
+  // see tests/security/tenant-isolation.test.ts, "does not let a user
+  // read another user's profile with no shared group" — unaffected by
+  // 0026, since that policy only adds a path for is_platform_admin().
+  // -----------------------------------------------------------------
+
+  it("lets a platform admin read the profile of a user they share no group with, with exactly id/email/full_name", async () => {
+    const { data, error } = await platformAdminClient
+      .from("profiles")
+      .select("id, email, full_name")
+      .eq("id", applicantId);
+
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+    expect(data?.[0]?.id).toBe(applicantId);
+    expect(Object.keys(data![0]).sort()).toEqual(["email", "full_name", "id"]);
+  });
+
+  it("lets a user read their own profile", async () => {
+    const { data, error } = await applicantClient
+      .from("profiles")
+      .select("id, email, full_name")
+      .eq("id", applicantId);
+
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+  });
+
+  it("lets a groupmate read a profile they share an active group with", async () => {
+    const groupId = await createActiveGroup(
+      ownerClient,
+      "Platform Test Profile Groupmate",
+      `plat-profile-groupmate-${runId}`,
+    );
+    const { error: addMemberError } = await adminClient
+      .from("group_memberships")
+      .insert({ group_id: groupId, user_id: memberId, role: "member", status: "active" });
+    expect(addMemberError).toBeNull();
+
+    const { data, error } = await memberClient.from("profiles").select("id, email, full_name").eq("id", ownerId);
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+
+    await adminClient.from("groups").delete().eq("id", groupId);
+  });
+
+  it("does not let an anonymous (unauthenticated) request read a profile", async () => {
+    const anonClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data, error } = await anonClient.from("profiles").select("id").eq("id", applicantId);
+
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+  });
 });

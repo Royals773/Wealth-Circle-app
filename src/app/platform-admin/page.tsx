@@ -80,6 +80,7 @@ export default async function PlatformAdminPage() {
                 groupId={g.id}
                 name={g.name}
                 slug={g.slug}
+                ownerId={g.ownerId}
                 ownerEmail={g.ownerEmail}
                 createdAt={g.createdAt}
               />
