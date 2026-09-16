@@ -313,3 +313,114 @@ Migration `0026` has been applied to WealthCircle Staging only (ref
 `zxxkmvoovdlxpikkvqvs`); local and remote migration histories match;
 `supabase db lint` reports zero errors. No production project was
 touched.
+
+## 8. PA-06 / PA-07 / PA-08 / PA-25 — second-group creation, approval, and tenant isolation, 2026-09-16
+
+Live-verified on branch `fix/group-verification-and-admin-signout`.
+
+### Group B — identity
+
+```
+id:            cee71300-7824-4be9-8a87-2ea476629a49
+name:          Wealth Circle Pilot Group B
+status:        active
+country/currency: GH / GHS
+```
+
+### PA-06/PA-07 — creation through the real wizard
+
+An approved organiser (`csewonyadzi@gmail.com`) completed the real
+`/onboarding/new` wizard: name "Wealth Circle Pilot Group B", description,
+Ghana/GHS, a fixed 100.00 GHS monthly contribution, January financial
+year start, no initial invitations. Confirmed exact resulting inserts,
+matching `create_group_with_setup`'s deployed definition read directly
+from staging beforehand: one `groups` row (`status: pending_review`,
+`country_code: GH`, `currency_code: GHS`, `created_by:` the organiser's
+UID), one owner `group_memberships` row (via the existing
+`handle_new_group` trigger), one `contribution_plans` row
+(`amount_minor_units: 10000`, `frequency: monthly`, `is_flexible: false`),
+one `group_created` audit row, and zero invitations (the RPC accepts but
+ignores `p_invites` by design — new groups may not invite until
+approved). No changes to the original "Wealth Circle Testing" group or
+any financial/governance/lending table.
+
+PA-07: Ghana and GHS were entered on the wizard's first step, then the
+tester navigated Back to the same step and forward again via Continue —
+both values remained visibly selected throughout, then appeared
+correctly on the Review step, and persisted in the database exactly as
+`country_code: GH`, `currency_code: GHS` — one value each, no
+duplication. This is consistent with the wizard's own architecture (all
+steps stay mounted in shared parent component state; back/forward only
+toggles CSS visibility, never remounts), confirmed by source inspection
+before the live test.
+
+**The first PA-06 submission attempt was rejected**, not by a defect:
+`create_group_with_setup` correctly raised "You need an approved
+organiser application before you can create a group" because the
+browser was still using the groupless `wc-staging-admin` session at
+the moment of submission (that account has zero organiser applications
+— confirmed directly), not the intended `csewonyadzi` session. The
+rejection was fully atomic — zero rows written across every table
+checked. The tester then explicitly verified the signed-in identity,
+performed a full sign-out and fresh sign-in as `csewonyadzi`, and the
+resubmission succeeded cleanly. **This is not classified as an
+application defect** — the deployed RPC and its authorization function
+were confirmed, via `pg_get_functiondef` read directly from staging, to
+match migration source exactly, and the function correctly rejected
+the account that was actually authenticated at the time.
+
+### PA-08 — approval through the real platform-admin UI
+
+`wc-staging-admin@example.com` approved Group B through the real
+`/platform-admin` review screen. `groups.status` changed from
+`pending_review` to `active`. The approval reason was entered and
+persisted exactly in the single new `audit_logs` row (`action:
+group_approved`, `metadata.reason`) — `groups` itself has no
+reviewer/timestamp/reason columns, confirmed directly against the live
+schema; that data lives only in `audit_logs`. Exactly one audit row
+created, no duplicate decision possible (the RPC requires
+`status = 'pending_review'` and re-raises if already decided). Zero
+membership, contribution-plan, invitation, notification, or
+financial/governance/lending changes. The owner's `create_invitation`
+capability, gated on `is_group_active()`, was confirmed to flip from
+false to true as a direct result of this approval.
+
+### PA-25 — tenant isolation between the two real groups
+
+Using `wealthcircle-test-5@example.com` (Group A's owner, with zero
+membership or privilege in Group B, confirmed directly) as the denial
+actor: three direct Group B routes (root, `/members`, `/settings`) each
+produced a `307` redirect to Group A's own dashboard, at the
+application layer, before any Group B page code ran — traced to
+`getDashboardContext()`'s own-membership check. Independently, RLS
+simulation under this account's authenticated identity returned zero
+rows for Group B's `groups`, `group_memberships`, and
+`contribution_plans` rows, each proven to be RLS-filtered rather than
+genuinely empty by cross-checking with elevated access. A
+`create_invitation` authorization probe against Group B, run inside an
+explicit transaction, was rejected with `P0001: Only group owners and
+administrators can create invitations` before any insert; the
+transaction was rolled back and independently confirmed to have created
+zero rows. Complete before/after comparison across every relevant table
+(groups, memberships, contribution plans, invitations, audit logs,
+notifications, organiser applications, and all financial/governance/
+lending tables) showed zero business-state changes from this
+verification. No Group B field was observed anywhere it should not
+have been — not the name, not the GH/GHS values, not the roster, not
+settings.
+
+### Platform-admin Sign-out — found and fixed (P2, not part of PA-25)
+
+While switching between accounts during this verification,
+`/platform-admin` was found to have no visible Sign-out control at all
+for an authenticated visitor — not for an authorised platform admin,
+and not for the inline "not authorised" denial view a non-admin sees.
+Root cause: `platform-admin/layout.tsx` never received the sign-out
+form its sibling groupless layouts (`onboarding`, `apply-organiser`)
+got when that class of gap was originally fixed. Fixed by adding the
+identical, already-tested `<form action={signOutAction}>` block used on
+those two siblings. **This fix changed no authorization or database
+logic** — it is confined to the layout's header markup, reuses the
+existing `signOutAction` unchanged, and was live-verified for both the
+authorised admin view and the non-admin denial view: Sign-out is now
+visible and functional on both, correctly returning to `/`.
