@@ -5,14 +5,19 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { RecordRepaymentDialog, type LoanOption } from "@/components/dashboard/record-repayment-dialog";
 import { RepaymentsTable, type RepaymentRow } from "@/components/dashboard/repayments-table";
+import { LendingDisabledNotice } from "@/components/dashboard/lending-disabled-notice";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembershipRole } from "@/lib/data/current-membership";
 import { roleHasCapability } from "@/lib/permissions";
 import { outstandingPrincipal } from "@/lib/loans";
+import { LENDING_DISABLED } from "@/lib/lending-gate";
 import { formatMoney } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Repayments" };
+
+const REPAYMENTS_UNAVAILABLE_MESSAGE =
+  "Lending is currently unavailable. No repayment actions can be recorded while lending is disabled.";
 
 async function loadActiveLoanOptions(groupId: string): Promise<LoanOption[]> {
   const supabase = await createClient();
@@ -94,6 +99,11 @@ export default async function RepaymentsPage({ params }: { params: Promise<{ gro
           title="Repayments"
           description="Track loan repayments as they're submitted, verified and reconciled."
         />
+        {LENDING_DISABLED ? (
+          <div className="mb-6">
+            <LendingDisabledNotice message={REPAYMENTS_UNAVAILABLE_MESSAGE} />
+          </div>
+        ) : null}
         <EmptyState
           icon={ReceiptText}
           title="No repayments recorded yet"
@@ -113,10 +123,19 @@ export default async function RepaymentsPage({ params }: { params: Promise<{ gro
           title="Repayments"
           description="Track loan repayments as they're submitted, verified and reconciled."
         />
+        {LENDING_DISABLED ? (
+          <div className="mb-6">
+            <LendingDisabledNotice message={REPAYMENTS_UNAVAILABLE_MESSAGE} />
+          </div>
+        ) : null}
         <EmptyState
           icon={ReceiptText}
           title="Nothing to show here"
-          description="Repayment recording is handled by your group's treasurers and loan officers. You can see your own loan repayment history on the Loans page."
+          description={
+            LENDING_DISABLED
+              ? "No repayment actions can be recorded while lending is disabled."
+              : "Repayment recording is handled by your group's treasurers and loan officers. You can see your own loan repayment history on the Loans page."
+          }
         />
       </div>
     );
@@ -140,6 +159,12 @@ export default async function RepaymentsPage({ params }: { params: Promise<{ gro
         description="Track loan repayments as they're submitted, verified and reconciled."
       />
 
+      {LENDING_DISABLED ? (
+        <div className="mb-6">
+          <LendingDisabledNotice message={REPAYMENTS_UNAVAILABLE_MESSAGE} />
+        </div>
+      ) : null}
+
       <div className="mb-6 flex items-center justify-end">
         {loanOptions.length > 0 ? (
           <RecordRepaymentDialog groupId={groupId} loans={loanOptions} />
@@ -157,9 +182,11 @@ export default async function RepaymentsPage({ params }: { params: Promise<{ gro
           icon={ReceiptText}
           title="No repayments recorded yet"
           description={
-            loanOptions.length === 0
-              ? "Repayments can be recorded once a loan has been disbursed and is active."
-              : "Record a repayment above once one has been received."
+            LENDING_DISABLED
+              ? "No repayment actions can be recorded while lending is disabled."
+              : loanOptions.length === 0
+                ? "Repayments can be recorded once a loan has been disbursed and is active."
+                : "Record a repayment above once one has been received."
           }
         />
       ) : (

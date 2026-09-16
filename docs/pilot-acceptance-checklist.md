@@ -196,7 +196,7 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-26 | Any user attempts to reach loan application, approval, disbursement, or repayment functionality via the UI and directly via the RPC/API layer. | Lending remains inaccessible everywhere — UI does not expose it, and the underlying functions refuse execution (per `0021_gate_lending_pending_legal_review.sql`) rather than merely being hidden. | | | | | | | | |
+| PA-26 | Any user attempts to reach loan application, approval, disbursement, or repayment functionality via the UI and directly via the RPC/API layer. | Lending remains inaccessible everywhere — UI does not expose it, and the underlying functions refuse execution (per `0021_gate_lending_pending_legal_review.sql`) rather than merely being hidden. | Courage Sewonyadzi | 2026-09-16 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | Loans and Repayments explicitly display that lending is unavailable; no actionable controls render; Settings shows Loans not enabled; all lending tables remain empty; all 11 RPCs reject anon/authenticated execution; impossible-UUID permission test returned 42501. | Pass | Real browser verification, database row-count comparison, privilege inspection, and authenticated-role permission-denial test. | | |
 
 ### 27. Safari/mobile usability
 
@@ -216,7 +216,7 @@ Result** once any defect is fixed.
 
 | Total scenarios | Passed | Failed (open) | Failed (P0/P1, blocking) | Failed (P2/P3, non-blocking) |
 |---|---|---|---|---|
-| 28 (baseline; add rows as needed) | 7 (PA-01, PA-02, PA-03, PA-09, PA-10, PA-11, PA-12) | 0 | 0 | 0 |
+| 28 (baseline; add rows as needed) | 8 (PA-01, PA-02, PA-03, PA-09, PA-10, PA-11, PA-12, PA-26) | 0 | 0 | 0 |
 
 The pilot must not open while the "Failed (P0/P1, blocking)" column is
 non-zero.

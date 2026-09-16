@@ -240,3 +240,31 @@ changed by any of the three checks.
 - Only the checklist items explicitly re-verified above are recorded as
   passed here — no untested item has been marked passed as a side effect
   of this pass.
+
+## 6. PA-26 — lending-disabled verification, 2026-09-16
+
+Live-verified on branch `fix/lending-disabled-messaging`. Database row
+counts for all four lending tables (`loan_applications`, `loan_products`,
+`loans`, `repayments`) and `EXECUTE` grants for `anon`/`authenticated` on
+all 11 gated loan RPCs were captured before and after testing and found
+byte-for-byte identical — zero rows, all grants still revoked. A
+permission-layer access attempt (`mark_loan_under_review` with an
+impossible UUID, executed directly under the `authenticated` role) was
+rejected with `42501 permission denied` before any function logic ran.
+`LENDING_DISABLED` remains `true`.
+
+During this verification, a P2 defect was found: the Loans and
+Repayments pages rendered no actionable lending controls (correct), but
+their empty-state copy read as though lending were an active, operational
+feature ("Loan applications you submit will appear here," "Repayment
+recording is handled by your group's treasurers and loan officers"),
+while Settings → Loans was the only place that explicitly said "Not
+enabled." Fixed on the same branch: both pages now visibly state that
+lending is unavailable, and the misleading empty-state wording was
+replaced. Covered by 11 new regression tests
+(`src/components/dashboard/lending-disabled-notice.test.tsx`,
+`src/app/(dashboard)/dashboard/[groupId]/loans/page.test.tsx`,
+`src/app/(dashboard)/dashboard/[groupId]/repayments/page.test.tsx`). The
+fix was then live-verified in the browser on both pages. No database
+schema, RPC permission, navigation structure, or the lending gate itself
+was changed by this fix.
