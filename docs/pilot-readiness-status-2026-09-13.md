@@ -26,24 +26,26 @@ All nine are on `staging`; none have been merged to `main`.
 ## 2. pilot-acceptance-checklist.md — live-evidence status
 
 All 28 journeys now have *some* form of live evidence behind them — none
-remain purely code-inferred. Two of those live results are themselves the
-finding that something isn't ready yet (PA-23, PA-28) rather than a pass —
-called out explicitly below, not glossed over.
+remain purely code-inferred. One of those live results is itself the
+finding that something isn't ready yet (PA-28) rather than a pass —
+called out explicitly below, not glossed over. PA-01, PA-02, PA-03, PA-09,
+PA-10, PA-11, PA-12, and PA-23 were re-verified on 2026-09-16 with
+stronger, real end-to-end evidence — see Section 5.
 
 | ID | Evidence source |
 |---|---|
-| PA-01 Signup | Live dry run (Batch 1 + Batch 4b — real signup form, real account created) |
-| PA-02 Email confirmation | Live dry run (Batch 1 + Batch 4b — real `/auth/confirm` page and button) |
-| PA-03 Password reset | Live dry run (Batch 1 — real verify/update round trip; old password confirmed rejected, new one confirmed working) |
+| PA-01 Signup | **Re-verified 2026-09-16**: real browser signup form through the genuine `supabase.auth.signUp()` path (not `admin.generateLink()`) — see Section 5 |
+| PA-02 Email confirmation | **Re-verified 2026-09-16**: real Resend-delivered Supabase Auth confirmation email, real `/auth/confirm` link, `email_confirmed_at` populated — see Section 5 |
+| PA-03 Password reset | **Re-verified 2026-09-16**: full real journey — forgot-password submitted, real emailed recovery link used, new password set, old password confirmed rejected, new password confirmed working, session persisted after refresh — see Section 5 |
 | PA-04 Organiser application | Live dry run (Batch 1 — real `apply_for_organiser_status` RPC) |
 | PA-05 Platform approval | Live dry run (Batch 1 — real `decide_organiser_application` RPC + audit row) |
 | PA-06 Group creation | Live dry run (Batch 3, non-default GH/GHS + Batch 4b real wizard UI) |
 | PA-07 Country/currency persistence | Live dry run (Batch 3 — every field independently re-read from the database, not trusted from the RPC's own response) |
 | PA-08 Group approval | Live dry run (Batch 1 — real `decide_group_review` RPC) |
-| PA-09 Member invitation | Live dry run (Batch 1 — real `create_invitation` RPC, corrected after an initial wrong assumption) |
-| PA-10 Invitation acceptance | Live dry run (Batch 1 — real `accept_invitation` RPC; token-reuse confirmed rejected) |
-| PA-11 Joining a group / dashboard | Live dry run (Batch 1 RLS-scoped read + Batch 4b real rendered dashboard) |
-| PA-12 Role-based access | `tests/security/membership.test.ts`, `platform-authorisation.test.ts` — live run tonight |
+| PA-09 Member invitation | **Re-verified 2026-09-16**: real invitation created through the real owner UI by an authorised group owner, and a real application invitation email delivered through Resend — see Section 5 |
+| PA-10 Invitation acceptance | **Re-verified 2026-09-16**: the exact invitation's `group_invitations.status` changed to `accepted`, confirmed by ID, not inferred from timing — see Section 5 |
+| PA-11 Joining a group / dashboard | **Re-verified 2026-09-16**: real member joined the correct group via the real invitation link; group dashboard rendered correctly with accurate, database-matching data — see Section 5 |
+| PA-12 Role-based access | `tests/security/membership.test.ts`, `platform-authorisation.test.ts` — live run tonight, **plus a real-browser re-verification on 2026-09-16** (platform-admin denial, read-only settings, read-only member roster, zero rows changed) — see Section 5 |
 | PA-13 Member removal/reactivation | `tests/security/membership.test.ts` — live run tonight |
 | PA-14 Contributions | `tests/security/contributions.test.ts` — live run tonight |
 | PA-15 Partial contributions | Live dry run (Batch 2 — real partial payment, shortfall math confirmed correct) |
@@ -54,7 +56,7 @@ called out explicitly below, not glossed over.
 | PA-20 Governance and voting | `tests/security/governance.test.ts` — live run tonight |
 | PA-21 Reports | `tests/security/reports.test.ts` (live run) + Batch 2's live export test |
 | PA-22 Exports | Live dry run (Batch 2 — real HTTP request through a real signed-in browser session; correct CSV content and audit row) |
-| PA-23 Notifications — email | **Live-tested, found blocked**: Batch 2 confirmed this app's own SMTP config is unset — no notification email can send right now. Not a pass. See open items. |
+| PA-23 Notifications — email | **Re-verified 2026-09-16 — Pass**: this app's own `EMAIL_SMTP_*`/Resend notification system is now configured and confirmed working — see Section 5 |
 | PA-24 Audit trail | `tests/security/audit.test.ts` — live run tonight |
 | PA-25 Tenant isolation | `tests/security/tenant-isolation.test.ts` — live run tonight |
 | PA-26 Lending-disabled verification | Live check: `LENDING_DISABLED` flag confirmed `true` in code, and all 11 lending RPCs confirmed to show `EXECUTE: false` for `anon`/`authenticated` directly on staging |
@@ -65,7 +67,6 @@ called out explicitly below, not glossed over.
 
 **Yours:**
 - Backup tier / PITR decision — see `docs/phase-9-backup-recovery.md`. The drill runbook is ready the moment this is resolved.
-- SMTP provider account for this app's own notification emails (`EMAIL_SMTP_*` is currently unset on staging) — PA-23's gap.
 - A real device pass for PA-27 (actual iPhone/iPad, real mobile browser) — the WebKit/mobile-viewport proxy is real evidence but not a substitute.
 - Branch protection on `main` — flagged earlier in this engagement, manual dashboard steps given, not yet applied.
 - GitHub PAT rotation/scope check — same, flagged earlier, not yet re-verified.
@@ -105,3 +106,137 @@ no decision has been made on whether to.
 fetches the full user list and filters by email in code, and explicitly
 never passes an email-shaped value to that endpoint's query parameters —
 verified in each script before it ran against anything live.
+
+## 5. Live verification — 2026-09-16
+
+Work below is on branch `fix/pilot-auth-invitation-flow`. **Not yet
+merged to staging** — see the branch's own commits for the exact diff.
+No raw invitation token, password, SMTP credential, or API key appears
+anywhere in this section.
+
+### Authentication re-verified with real SMTP, not `admin.generateLink()`
+
+PA-01/PA-02/PA-03 were originally verified (2026-09-13) using
+`admin.generateLink()` specifically to avoid triggering a real SMTP send
+— a disclosed, reasonable choice at the time, but it meant the real
+`supabase.auth.signUp()` → real email → real `/auth/confirm` path was
+never actually exercised. On 2026-09-16 that gap was closed for real:
+signup, email confirmation, and the full password-reset journey (old
+password rejected, new password accepted, session persisted after
+refresh) were all driven through the actual browser UI, with a real
+Supabase Auth confirmation/recovery email genuinely delivered.
+
+### General authentication verification — itemized
+
+Each confirmed independently, server-side (logs plus non-secret database
+state) alongside the real browser action, not assumed from the UI alone:
+
+- Sign-in: **passed**.
+- Session refresh (authenticated session persists across a hard page
+  refresh): **passed**.
+- Protected-route enforcement while signed out: **passed** — visiting
+  `/apply-organiser` while signed out produced a genuine `307` redirect
+  to `/sign-in?next=/apply-organiser`, not a silently-rendered page.
+- Sign-out: **passed** (see the groupless-user sign-out fix below —
+  before this fix, sign-out had no UI control at all for some accounts).
+- Sign-out destination: intentionally `/` (the public homepage), not
+  `/sign-in` — confirmed deliberate, not a defect.
+- Return-to-destination after authentication: **passed** — signing back
+  in from the `next=/apply-organiser` redirect correctly returned to
+  `/apply-organiser`, not a generic landing page.
+
+### Two separate SMTP systems — do not conflate them
+
+This app depends on two independent SMTP configurations:
+1. **Supabase Auth's own SMTP** (dashboard-configured, Project Settings →
+   Authentication → Emails) — governs signup confirmation and password
+   recovery emails.
+2. **This app's own `EMAIL_SMTP_*`/Resend, via `src/lib/email/mailer.ts`**
+   — governs in-app notification emails (invitations, contribution
+   records, etc.), entirely separate infrastructure and credentials.
+
+Both were found broken tonight, independently, and fixed independently.
+
+### Supabase Auth SMTP — signup failures resolved
+
+Real browser signup was failing with a hard `500`
+(`"Error sending confirmation email"`, `unexpected_failure`) — Supabase
+Auth's own confirmation email was failing to send, which aborted account
+creation entirely (no `auth.users` row was even created). Resolved by
+rotating Supabase Auth's own SMTP credential (dashboard-side, not
+`.env.local`). Confirmed fixed via a real, reproducible signup → real
+delivered email → real `/auth/confirm` link → confirmed account.
+
+### Application notification SMTP (`EMAIL_SMTP_*`) — 535 failures resolved
+
+Separately, this app's own notification email was failing with
+`Invalid login: 535 Authentication credentials invalid` against
+`smtp.resend.com`. Resolved with a dedicated Resend API key for this
+purpose and a local dev-server restart (Next.js does not hot-reload
+environment variable changes). Before creating another live invitation,
+a non-sending Nodemailer `transport.verify()` authentication check was
+run and **passed** — confirming the credential itself authenticates
+correctly without sending any message.
+
+### Groupless-user sign-out gap — found and fixed
+
+Any authenticated user without a group yet (mid-onboarding, an organiser
+applicant awaiting a decision) had **no way to sign out through the UI**
+— the only sign-out control lived inside `DashboardShell`, which only
+mounts once a group exists. Fixed by adding a real, keyboard-accessible
+sign-out control (reusing the existing `signOutAction`, no new
+implementation) to both `src/app/onboarding/layout.tsx` and
+`src/app/apply-organiser/layout.tsx` — covering `/onboarding`,
+`/onboarding/new`, `/onboarding/join`, and `/apply-organiser`. Verified
+live: sign-out works, the protected route (`/apply-organiser`) then
+genuinely redirects (`307`) to `/sign-in?next=/apply-organiser` rather
+than silently rendering, and signing back in correctly returns to the
+originally-requested page. **Accepted product behaviour**: sign-out
+redirects to `/` (the public homepage), not `/sign-in` — a deliberate,
+confirmed decision, not a defect.
+
+### Invitation email gap — found and fixed
+
+Creating an invitation previously produced only a database record and a
+manually-shareable link — `create_invitation` never queues a
+notification (it can't: `create_notification()` requires an existing
+`recipient_id`, and an invitee may not have an account yet), and
+`createInvitationAction` never called the email dispatcher at all.
+Fixed by having `createInvitationAction` call `sendNotificationEmail()`
+directly and synchronously, addressed to the raw invitee email, right
+after a successful invitation is created. Email failure never
+invalidates the invitation — the action always returns a valid
+`inviteLink` regardless, plus a non-secret `emailStatus: "sent" | "failed"`
+the UI now displays honestly ("Invitation created and emailed
+successfully..." vs "...but the email could not be sent. Copy and share
+this link directly.") — the raw SMTP error is never sent to the browser,
+and the backup copy-link control remains available in both cases.
+Covered by 10 new regression tests (`src/lib/actions/invitations.test.ts`,
+`src/components/dashboard/invite-member-dialog.test.tsx`).
+
+### PA-09 / PA-10 / PA-11 / PA-12 — full real chain, live-verified
+
+An authorised group owner (`wealthcircle-test-5@example.com`) created a
+real invitation for a real Gmail address through the real UI; Resend
+delivered the real invitation email; the recipient opened the real link
+and accepted; the exact invitation's `group_invitations.status` flipped
+to `accepted` (confirmed by row ID, not inferred from timing); a real
+`group_memberships` row was created with the correct role; the group
+dashboard rendered correctly with data matching the database exactly
+(£0.00 balance, 0 contributions, matching the group's genuinely-empty
+state). PA-12 was then verified with the same account: platform-admin
+access correctly denied (inline message, not a redirect), the group
+settings page correctly hid every owner/admin-only management section,
+and the members page correctly showed a read-only roster with no
+invite/role-change/removal controls — all three confirmed both visually
+and server-side (logs plus non-secret database state), with zero rows
+changed by any of the three checks.
+
+### Standing facts, unchanged
+
+- **Lending remains disabled** — nothing in this session touched
+  `supabase/migrations/0021_gate_lending_pending_legal_review.sql`,
+  `LENDING_DISABLED`, or any of the 11 gated RPCs.
+- Only the checklist items explicitly re-verified above are recorded as
+  passed here — no untested item has been marked passed as a side effect
+  of this pass.

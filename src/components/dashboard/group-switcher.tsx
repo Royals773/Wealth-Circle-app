@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronsUpDown, PlusCircle } from "lucide-react";
+import { Building2, Check, ChevronsUpDown, PlusCircle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,10 +29,13 @@ export function GroupSwitcher({
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="w-full justify-between sm:w-64"
+          className="w-full justify-between gap-2 sm:w-64"
           aria-label="Switch group"
         >
-          <span className="truncate">{currentGroup.name}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <Building2 aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{currentGroup.name}</span>
+          </span>
           <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>

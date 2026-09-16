@@ -52,7 +52,7 @@ export function DashboardShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-6">
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu">
@@ -73,14 +73,16 @@ export function DashboardShell({
             </SheetContent>
           </Sheet>
 
-          <GroupSwitcher memberships={memberships} currentGroup={currentGroup} />
+          <div className="min-w-0 flex-1">
+            <GroupSwitcher memberships={memberships} currentGroup={currentGroup} />
+          </div>
 
           <div className="ml-auto flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-2">
                   <Avatar className="h-7 w-7">
-                    <AvatarFallback className="text-xs">
+                    <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
                       {currentGroup.role.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>

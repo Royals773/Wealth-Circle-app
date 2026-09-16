@@ -46,19 +46,19 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-01 | New participant signs up with a real, invited email address. | Account is created; participant is routed to email confirmation. | | | | | | | | |
+| PA-01 | New participant signs up with a real, invited email address. | Account is created; participant is routed to email confirmation. | Courage Sewonyadzi | 2026-09-15 | staging Supabase (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real browser signup form, genuine `supabase.auth.signUp()`, real user created. An initial SMTP `500` blocker (Supabase Auth's own confirmation email failing to send) was resolved by rotating Supabase Auth's SMTP credential to Resend; signup then succeeded. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §5 | | |
 
 ### 2. Email confirmation
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-02 | Participant opens the confirmation email and follows the link. | Account becomes confirmed/active; participant can sign in. | | | | | | | | |
+| PA-02 | Participant opens the confirmation email and follows the link. | Account becomes confirmed/active; participant can sign in. | Courage Sewonyadzi | 2026-09-15 | staging Supabase (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real email delivered through Supabase Auth SMTP (Resend), real `/auth/confirm` link followed, `email_confirmed_at` populated. Distinct from the earlier `admin.generateLink()` check, which never exercised real SMTP. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §5 | | |
 
 ### 3. Password reset
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-03 | Participant requests a password reset and follows the emailed link. | Participant can set a new password and sign in with it; old password no longer works. | | | | | | | | |
+| PA-03 | Participant requests a password reset and follows the emailed link. | Participant can set a new password and sign in with it; old password no longer works. | Courage Sewonyadzi | 2026-09-15 | staging Supabase (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real `/forgot-password` request, real Resend delivery, genuine PKCE recovery link followed to `/auth/confirm?type=recovery` → `/reset-password`, password updated. Old password confirmed rejected (`signInAction` returned "Incorrect email or password."); new password confirmed accepted; session persisted after a refresh. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §5 | | |
 
 ### 4. Organiser application
 
@@ -94,25 +94,25 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-09 | Organiser invites a real participant by email with a specific role. | Invitation is recorded and an invite link/email is generated. | | | | | | | | |
+| PA-09 | Organiser invites a real participant by email with a specific role. | Invitation is recorded and an invite link/email is generated. | Courage Sewonyadzi | 2026-09-16 | staging Supabase (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real invitation created through the real owner UI (role: member). Invitation email uses the separate application `EMAIL_SMTP_*`/`mailer.ts` credential (distinct from Supabase Auth SMTP) — an initial `535` auth failure was resolved with a dedicated Resend key, confirmed via a non-sending `transport.verify()` pass before retrying. `createInvitationAction` now sends the invitation email directly; the UI honestly distinguishes sent vs. failed delivery while always preserving the backup link. Email delivered to the real inbox. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §5 | | |
 
 ### 10. Invitation acceptance
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-10 | Invited participant opens the invite link and accepts. | Participant is added to the group with the invited role; invite cannot be reused after acceptance. | | | | | | | | |
+| PA-10 | Invited participant opens the invite link and accepts. | Participant is added to the group with the invited role; invite cannot be reused after acceptance. | Courage Sewonyadzi | 2026-09-16 | staging Supabase (`zxxkmvoovdlxpikkvqvs`) via local dev server | The exact invitation row's `group_invitations.status` changed to `accepted` (confirmed by row ID, not inferred from timing). Exactly one active `group_memberships` row created, correct role; no duplicate membership. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §5 | | |
 
 ### 11. Joining a group
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-11 | Newly accepted member opens the group dashboard for the first time. | Member sees the group's real data (name, members, relevant sections) scoped correctly to their role. | | | | | | | | |
+| PA-11 | Newly accepted member opens the group dashboard for the first time. | Member sees the group's real data (name, members, relevant sections) scoped correctly to their role. | Courage Sewonyadzi | 2026-09-16 | staging Supabase (`zxxkmvoovdlxpikkvqvs`) via local dev server | "Wealth Circle Testing" dashboard rendered correctly — correct group name, correct (genuinely empty) financial and governance state matching the database exactly, member-scoped navigation displayed, no errors. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §5 | | |
 
 ### 12. Role-based access
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-12 | An ordinary member attempts an action reserved for treasurer/administrator/owner (e.g. recording a contribution, changing a role, approving a withdrawal). | Action is denied at the UI and at the data layer (not just hidden in the UI). | | | | | | | | |
+| PA-12 | An ordinary member attempts an action reserved for treasurer/administrator/owner (e.g. recording a contribution, changing a role, approving a withdrawal). | Action is denied at the UI and at the data layer (not just hidden in the UI). | Courage Sewonyadzi | 2026-09-16 | staging Supabase (`zxxkmvoovdlxpikkvqvs`) via local dev server | `/platform-admin` displayed the expected inline denial (not a redirect); group settings rendered read-only with contribution-plan/loan-product/withdrawal-policy management controls absent; members page rendered a reduced roster with no invitation, role-change, or removal controls. Zero database mutations across all three checks, confirmed via logs and non-secret DB state. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §5 | | |
 
 ### 13. Member removal/reactivation
 
@@ -216,7 +216,7 @@ Result** once any defect is fixed.
 
 | Total scenarios | Passed | Failed (open) | Failed (P0/P1, blocking) | Failed (P2/P3, non-blocking) |
 |---|---|---|---|---|
-| 28 (baseline; add rows as needed) | | | | |
+| 28 (baseline; add rows as needed) | 7 (PA-01, PA-02, PA-03, PA-09, PA-10, PA-11, PA-12) | 0 | 0 | 0 |
 
 The pilot must not open while the "Failed (P0/P1, blocking)" column is
 non-zero.
