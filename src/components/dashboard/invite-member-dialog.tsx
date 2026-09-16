@@ -27,6 +27,25 @@ import { initialInvitationActionState } from "@/lib/actions/action-state";
 import { GROUP_INVITE_ROLES } from "@/lib/validations/group";
 import { ROLE_LABELS } from "@/lib/permissions";
 
+/**
+ * Extracted for the same reason WizardNextAction is extracted in
+ * create-group-wizard.tsx: useActionState's live state transitions aren't
+ * exercisable under this repo's node-environment, renderToStaticMarkup-only
+ * test setup, so the emailStatus-driven message is pulled out as a plain
+ * prop-driven component that can be rendered directly in a test.
+ */
+export function InvitationResultMessage({ emailStatus }: { emailStatus?: "sent" | "failed" }) {
+  return (
+    <>
+      {emailStatus === "sent"
+        ? "Invitation created and emailed successfully. Copy the link as a backup."
+        : "Invitation created, but the email could not be sent. Copy and share this link directly."}
+      {" "}Copy this link now — for security, it can&apos;t be shown again after you close this
+      dialog. You can still revoke the invitation later from the members list.
+    </>
+  );
+}
+
 export function InviteMemberDialog({ groupId }: { groupId: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -62,8 +81,7 @@ export function InviteMemberDialog({ groupId }: { groupId: string }) {
             <DialogHeader>
               <DialogTitle>Invitation created</DialogTitle>
               <DialogDescription>
-                Copy this link now — for security, it can&apos;t be shown again after you close
-                this dialog. You can still revoke the invitation later from the members list.
+                <InvitationResultMessage emailStatus={state.emailStatus} />
               </DialogDescription>
             </DialogHeader>
             <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 p-3">

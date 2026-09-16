@@ -9,6 +9,7 @@ import { getAppUrl } from "@/lib/env";
 import { initialInviteSchema } from "@/lib/validations/group";
 import type { AuthActionState } from "@/lib/actions/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { sendNotificationEmail } from "@/lib/email/mailer";
 
 export interface InvitationActionState {
   status: "idle" | "error" | "success";
@@ -17,6 +18,13 @@ export interface InvitationActionState {
   /** Only ever populated once, immediately after creation — the raw
    * token is never stored, so this is the only chance to show the link. */
   inviteLink?: string;
+  /** Whether the invitee's email was actually delivered. A "failed" value
+   * never invalidates the invitation itself — inviteLink is still valid
+   * and still the UI's fallback regardless of this outcome. Never carries
+   * the raw SMTP error; sendNotificationEmail() already logs that safely
+   * server-side (src/lib/email/mailer.ts) without token/credential
+   * exposure — nothing further to log here. */
+  emailStatus?: "sent" | "failed";
 }
 
 const NOT_CONFIGURED_MESSAGE =
@@ -74,9 +82,24 @@ export async function createInvitationAction(
 
   revalidatePath(`/dashboard/${groupId}/members`);
 
+  const inviteLink = `${getAppUrl()}/invitations/${invitation.raw_token}`;
+
+  // Sent directly, not via the notifications-table + scheduler queue used
+  // elsewhere: that queue requires an existing recipient_id, but an
+  // invitee may not have an account yet — this is the one notification
+  // type that can't go through create_notification(). Email failure is
+  // non-fatal: the invitation above is already valid and already
+  // returned to the caller regardless.
+  const emailResult = await sendNotificationEmail({
+    to: parsed.data.email,
+    title: "You've been invited to join a WealthCircle group",
+    actionUrl: inviteLink,
+  });
+
   return {
     status: "success",
-    inviteLink: `${getAppUrl()}/invitations/${invitation.raw_token}`,
+    inviteLink,
+    emailStatus: emailResult.ok ? "sent" : "failed",
   };
 }
 
