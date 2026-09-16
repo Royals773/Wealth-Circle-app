@@ -64,13 +64,13 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-04 | Confirmed participant applies to become an organiser. | Application is recorded and visible to platform admin as pending. | | | | | | | | |
+| PA-04 | Confirmed participant applies to become an organiser. | Application is recorded and visible to platform admin as pending. | Courage Sewonyadzi | 2026-09-16 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real UI submission through `/apply-organiser` by `csewonyadzi@gmail.com`. Exactly one `organiser_applications` row created (`c338a115-60cc-42cf-998c-5dd2178f4788`), correct applicant UID, exact application note stored, status `pending`. No duplicate row, no audit/notification/email row, no group/role/platform-admin/financial change. | Pass | Real browser submission confirmed via server-action log (`applyForOrganiserStatusAction`) and database row comparison. | | |
 
 ### 5. Platform approval
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-05 | Platform admin reviews and approves the organiser application. | Applicant's role updates; applicant can now create a group. | | | | | | | | |
+| PA-05 | Platform admin reviews and approves the organiser application. | Applicant's role updates; applicant can now create a group. | Courage Sewonyadzi | 2026-09-16 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | Real approval through the platform-admin UI by `wc-staging-admin@example.com`. Application status changed to `approved`; `decided_by` = wc-staging-admin's UID; `decided_at` = 2026-09-16 16:26:40; `decision_reason` = null (approval reasons are optional — no reason was actually captured on submission, treated as the real result, not a defect). Exactly one `organiser_approved` audit row created; zero notification/email rows; zero group, membership, platform-admin, or financial changes. Applicant now eligible to create a group. | Pass | Real browser approval confirmed via server-action log (`decideOrganiserApplicationAction`), database row comparison, and audit-log inspection. | | |
 
 ### 6. Group creation
 
@@ -216,7 +216,7 @@ Result** once any defect is fixed.
 
 | Total scenarios | Passed | Failed (open) | Failed (P0/P1, blocking) | Failed (P2/P3, non-blocking) |
 |---|---|---|---|---|
-| 28 (baseline; add rows as needed) | 8 (PA-01, PA-02, PA-03, PA-09, PA-10, PA-11, PA-12, PA-26) | 0 | 0 | 0 |
+| 28 (baseline; add rows as needed) | 10 (PA-01, PA-02, PA-03, PA-04, PA-05, PA-09, PA-10, PA-11, PA-12, PA-26) | 0 | 0 | 0 |
 
 The pilot must not open while the "Failed (P0/P1, blocking)" column is
 non-zero.

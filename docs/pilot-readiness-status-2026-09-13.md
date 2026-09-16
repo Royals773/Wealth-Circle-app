@@ -268,3 +268,48 @@ replaced. Covered by 11 new regression tests
 fix was then live-verified in the browser on both pages. No database
 schema, RPC permission, navigation structure, or the lending gate itself
 was changed by this fix.
+
+## 7. PA-04 / PA-05 — organiser application and approval, 2026-09-16
+
+Live-verified on branch `fix/platform-admin-profile-visibility`. A
+confirmed participant (`csewonyadzi@gmail.com`) applied to become an
+organiser through the real `/apply-organiser` UI, creating exactly one
+`organiser_applications` row (`c338a115-60cc-42cf-998c-5dd2178f4788`,
+status `pending`), confirmed via server-action log and database
+comparison. A platform administrator (`wc-staging-admin@example.com`)
+then approved it through the real `/platform-admin` UI: status changed
+to `approved`, `decided_by`/`decided_at` populated correctly, exactly
+one `organiser_approved` audit row created, zero notification/email
+rows, zero unintended group/membership/platform-admin/financial
+changes. `decision_reason` is `null` — approval reasons are optional,
+and this is the real, unaltered result, not a defect.
+
+While reviewing the pending application, the platform-admin UI showed
+the applicant as "Unnamed" with a blank email. Root cause: `profiles`
+was the one table in the platform-admin review area that never
+received the admin-visibility RLS policy its siblings (`groups`,
+`organiser_applications`, `audit_logs`) already had —
+`profiles_select_self_or_groupmate` only allows a viewer to see their
+own profile or a groupmate's, so a platform admin reviewing an
+applicant they don't already share a group with got zero rows back,
+silently. Fixed via migration `0026_fix_platform_admin_profile_visibility.sql`,
+adding `profiles_select_platform_admins` (`to authenticated`, gated on
+`is_platform_admin()`), plus a defensive full-name → email →
+shortened-UID fallback in `OrganiserApplicationRow` and
+`GroupReviewRow` so neither ever shows a bare "Unnamed"/"unknown".
+
+Verified read-only via RLS role/JWT simulation, without creating any
+new accounts: a platform admin can now read an applicant's profile
+across group boundaries, returning exactly `id`/`email`/`full_name`;
+an ordinary authenticated user without a shared group still cannot;
+anonymous access still cannot; self-access and groupmate-access still
+work exactly as before. Ordinary tenant isolation is unchanged for
+every role other than platform admins. Then confirmed live in the
+browser: the platform-admin page correctly rendered "Courage" /
+"csewonyadzi@gmail.com" for the pending application before it was
+approved.
+
+Migration `0026` has been applied to WealthCircle Staging only (ref
+`zxxkmvoovdlxpikkvqvs`); local and remote migration histories match;
+`supabase db lint` reports zero errors. No production project was
+touched.
