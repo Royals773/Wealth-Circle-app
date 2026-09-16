@@ -126,6 +126,25 @@ password rejected, new password accepted, session persisted after
 refresh) were all driven through the actual browser UI, with a real
 Supabase Auth confirmation/recovery email genuinely delivered.
 
+### General authentication verification — itemized
+
+Each confirmed independently, server-side (logs plus non-secret database
+state) alongside the real browser action, not assumed from the UI alone:
+
+- Sign-in: **passed**.
+- Session refresh (authenticated session persists across a hard page
+  refresh): **passed**.
+- Protected-route enforcement while signed out: **passed** — visiting
+  `/apply-organiser` while signed out produced a genuine `307` redirect
+  to `/sign-in?next=/apply-organiser`, not a silently-rendered page.
+- Sign-out: **passed** (see the groupless-user sign-out fix below —
+  before this fix, sign-out had no UI control at all for some accounts).
+- Sign-out destination: intentionally `/` (the public homepage), not
+  `/sign-in` — confirmed deliberate, not a defect.
+- Return-to-destination after authentication: **passed** — signing back
+  in from the `next=/apply-organiser` redirect correctly returned to
+  `/apply-organiser`, not a generic landing page.
+
 ### Two separate SMTP systems — do not conflate them
 
 This app depends on two independent SMTP configurations:
