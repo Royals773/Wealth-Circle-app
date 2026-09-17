@@ -46,8 +46,8 @@ stronger, real end-to-end evidence — see Section 5.
 | PA-10 Invitation acceptance | **Re-verified 2026-09-16**: the exact invitation's `group_invitations.status` changed to `accepted`, confirmed by ID, not inferred from timing — see Section 5 |
 | PA-11 Joining a group / dashboard | **Re-verified 2026-09-16**: real member joined the correct group via the real invitation link; group dashboard rendered correctly with accurate, database-matching data — see Section 5 |
 | PA-12 Role-based access | `tests/security/membership.test.ts`, `platform-authorisation.test.ts` — live run tonight, **plus a real-browser re-verification on 2026-09-16** (platform-admin denial, read-only settings, read-only member roster, zero rows changed) — see Section 5 |
-| PA-13 Member removal/reactivation | `tests/security/membership.test.ts` — live run tonight |
-| PA-14 Contributions | `tests/security/contributions.test.ts` — live run tonight |
+| PA-13 Member removal/reactivation | **Re-verified 2026-09-17**: real browser removal → immediate access-loss → preserved history → reactivation → restored-access cycle, including a P1 defect found and fixed mid-verification — see Section 9 |
+| PA-14 Contributions | **Re-verified 2026-09-17**: real browser contribution recorded by the treasurer, including an invalid first attempt corrected through the real reject/re-record workflow — see Section 9 |
 | PA-15 Partial contributions | Live dry run (Batch 2 — real partial payment, shortfall math confirmed correct) |
 | PA-16 Backdated contributions | `tests/security/backdated-contributions.test.ts` — live run tonight |
 | PA-17 CSV import | Live dry run (Batch 2 — real `bulk_import_contributions` RPC, two scenarios: per-row rejection and whole-file rejection) |
@@ -424,3 +424,170 @@ logic** — it is confined to the layout's header markup, reuses the
 existing `signOutAction` unchanged, and was live-verified for both the
 authorised admin view and the non-admin denial view: Sign-out is now
 visible and functional on both, correctly returning to `/`.
+
+## 9. PA-13 / PA-14 — member lifecycle and contribution verification, 2026-09-17
+
+Live-verified on branch `fix/member-removal-copy`, against Group B
+(`cee71300-7824-4be9-8a87-2ea476629a49`), using a dedicated disposable
+account (`csewonyadzi+pa13@gmail.com`, display name "Ama") invited and
+accepted as **treasurer** — the role PA-14's own scenario requires.
+
+### PA-14 first attempt — invalid, corrected, not the passing evidence
+
+Ama accepted her treasurer invitation, then a 100.00 GHS contribution
+was recorded for the current period. The resulting record
+(`741c5b9c-8e85-4143-802d-11559b36cf2d`) had `created_by` equal to the
+Group B **owner**, not Ama — reconstructed from `auth.sessions`
+timestamps and the dev-server trace: two browser tabs were open at
+once, one still authenticated as the owner, and the contribution form
+was submitted from the wrong tab. Not an application defect:
+`record_contribution`'s deployed source assigns both `created_by` and
+the accompanying audit `actor_id` from a single server-resolved
+`auth.uid()` call, with no parameter or code path that lets a caller
+record on behalf of another identity.
+
+Corrected through the real UI, not a database edit: the owner rejected
+the invalid record via `reject_contribution` (`status → rejected`,
+`rejected_by`/`rejected_at`/`rejection_reason` populated, row retained
+rather than deleted — confirmed by the deployed RPC's own precondition,
+which only accepts a `pending_verification` record, and a `CHECK`
+constraint requiring those three fields whenever `status = 'rejected'`).
+Ama then signed in in a fully isolated fresh session (full sign-out,
+every tab closed, one fresh window, identity visually confirmed on the
+Members page before proceeding) and re-recorded the same 100.00 GHS
+contribution herself. The corrected record
+(`af79a2b1-e451-4dbc-b77e-690bcdf2f3e0`) has `member_id` and
+`created_by` both equal to Ama's own UID, the plan's full non-partial
+amount, the correct period/date/payment method, and `status:
+pending_verification` — confirmed correct in both her own "My
+contributions" view and the group's Contributions Overview. **This is
+the record PA-14 is marked Pass against.** The earlier owner-created
+row remains in the database, `rejected`, as a retained correction/audit
+trail — not itself evidence of a passing PA-14, and specifically not
+counted as "the treasurer recording a contribution."
+
+### PA-13 — removal, immediate access loss, reactivation, restored access
+
+With Ama's corrected contribution in place as an independent historical
+record, the Group B owner removed her through the real Members UI
+(reason: "PA-13 membership removal and reactivation verification.").
+`group_memberships.status` changed `active → removed`; nothing else on
+that row changed. Access loss was immediate and verified two
+independent ways: the bare `/dashboard` route's own active-membership
+query (`eq("status", "active")`) returned zero rows for Ama and
+redirected her to `/onboarding` before any Group B route ever rendered;
+separately, RLS simulation under her authenticated identity returned
+zero rows for `groups` and `contribution_plans`. One nuance is recorded
+precisely rather than overclaimed: `contribution_records` RLS matches
+on `member_id = auth.uid()` with no membership-status condition, so
+Ama's own two contribution rows remained individually selectable by her
+own `member_id` even while removed — she had no page from which to
+reach them, but this is not a categorical "removed users cannot query
+their own contribution rows" guarantee, and should not be described
+that way in future evidence. Exactly one `member_removed` audit row
+(actor: the owner) and one `member_removed` notification/email to Ama
+(delivered successfully) were created; both contribution records were
+confirmed byte-for-byte unchanged.
+
+### Defect found and fixed — Removed-tab identity and missing Reactivate control (P1)
+
+Attempting the real reactivation exposed a genuine defect, blocking the
+"reactivated member regains correct access" half of PA-13's own
+expected result: the Members page's Removed tab showed Ama as "Unknown
+member" with a blank email, and its Actions column was blank — no
+Reactivate control at all.
+
+Two independent root causes, both confirmed by reading the deployed
+code/policy directly rather than guessed:
+
+1. `src/components/dashboard/member-directory-table.tsx` explicitly
+   rendered `null` for the Actions cell whenever `member.status ===
+   "removed"` (desktop and mobile), even though
+   `MemberActionsMenu` already had correct, working "Reactivate" logic
+   for that status — it was simply never mounted.
+2. `profiles_select_self_or_groupmate` (the only groupmate-visibility
+   policy on `profiles`) requires **both** sides of the shared-group
+   join to be `status = 'active'`. `group_memberships` itself has no
+   such restriction for a manager viewing their own roster, so the
+   membership row was visible but the accompanying profile lookup
+   returned nothing the moment Ama's status flipped away from
+   `active` — the UI's "Unknown member" fallback then fired.
+
+Classified **P1** ("a core journey cannot be completed") per this
+checklist's own severity scale — reactivation, a documented capability
+("You can reactivate them later from the members page," the exact
+member-removal copy fixed earlier this engagement), had no working UI
+path for any removed member, in any group, once their profile became
+unreadable to the manager.
+
+Fixed on the same branch, in two minimal, independently-reviewable
+parts:
+- `member-directory-table.tsx`: removed the `status === "removed"`
+  exclusion in both the desktop and mobile Actions rendering, so a
+  removed row gets the same `MemberActionsMenu` a suspended row already
+  got. No change to `MemberActionsMenu` itself.
+- New migration `0027_fix_removed_member_profile_visibility.sql`: adds
+  one additive, narrowly-scoped policy,
+  `profiles_select_managers_any_status`, granting a group's
+  owner/administrator (`is_group_manager()` — the exact same role set
+  already authoritative for `remove_member`/`reactivate_member`/
+  `suspend_member`) read access to any member's profile in a group they
+  manage, regardless of that member's current status. Does not change
+  who can call `remove_member`/`reactivate_member`/`suspend_member` —
+  those RPCs re-check `is_group_manager()` themselves, unaffected by
+  this policy, which only widens a read path. Does not expose profiles
+  to ordinary members, to managers of unrelated groups, or to
+  signed-out requests.
+
+Both changes covered by new regression tests: 4 component tests
+(`member-directory-table.test.tsx`, asserting the actions trigger
+renders for removed/suspended members, still targets the real
+`user_id` when the display name falls back to "Unknown member", and
+stays hidden for the viewer's own row) and 6 live security tests added
+to `tests/security/membership.test.ts` (manager can read a removed
+member's profile; an unrelated-group manager and an ordinary member
+cannot; an ordinary member and an unrelated-group manager cannot call
+`reactivate_member`; a member's contribution history is unchanged
+across a full removal/reactivation cycle) — the latter require the
+migration applied plus live network access to run
+(`npm run test:security`), consistent with this repo's existing
+separation of that suite from the default build/lint/test gate.
+
+Migration `0027` has been applied to WealthCircle Staging only (ref
+`zxxkmvoovdlxpikkvqvs`) via `supabase db push`; local and remote
+migration histories match (`0027` recorded exactly once); the deployed
+policy definition was read back and confirmed to match the reviewed
+migration exactly. No production project was touched. Applying it
+created, updated, or deleted zero data rows — before/after counts were
+identical across every table (`groups`, `group_memberships`,
+`group_invitations`, `contribution_plans`, `contribution_records`,
+`audit_logs`, `notifications`, `profiles`, `auth.users`, and all
+financial/governance/lending tables).
+
+### Reactivation, live-verified after the fix
+
+With the fix deployed, the owner reactivated Ama through the real
+Members UI. `group_memberships.status` returned to `active`, `role`
+remained `treasurer`, and `joined_at` reset to the reactivation
+timestamp — the deployed, deliberate behaviour specific to a
+removed→active transition (a suspended→active transition preserves the
+original `joined_at`; both were already confirmed from the deployed
+RPC source during Stage 1 planning, before any mutation). The Removed
+tab correctly showed Ama's real name and email, and the Reactivate
+control worked. Exactly one `member_reactivated` audit row (actor: the
+owner) and one `member_reactivated` notification/email to Ama
+(delivered successfully, confirmed received) were created. Group B's
+summary totals returned exactly to their pre-removal state (2 active
+members, 200.00 GHS expected, 100.00 GHS received/pending, 0.00 GHS
+verified, 200.00 GHS outstanding). Both contribution records remained
+byte-for-byte unchanged through the complete removal→reactivation
+cycle — the same before/after snapshot comparison used throughout this
+engagement, not an assumption.
+
+Finally, Ama signed in in a fresh isolated session and reached Group B
+→ Contributions → My contributions directly, seeing both of her
+historical records (the retained `rejected` correction and the
+`pending_verification` corrected record) — live confirmation that
+access, and history, were both genuinely restored, not just implied by
+the database state. No contribution action was taken during this final
+check.

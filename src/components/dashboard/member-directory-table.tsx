@@ -43,14 +43,19 @@ export function MemberDirectoryTable({
   members,
   pendingInvitations,
   currentUserId,
+  initialStatus = "active",
 }: {
   groupId: string;
   members: DirectoryMember[];
   pendingInvitations: PendingInvitation[];
   currentUserId: string;
+  /** Defaults to "active" for real usage; exposed so tests can render
+   * the Suspended/Removed tabs directly instead of duplicating this
+   * component's tab-filtering logic in a second test-only helper. */
+  initialStatus?: (typeof STATUS_TABS)[number]["value"];
 }) {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<(typeof STATUS_TABS)[number]["value"]>("active");
+  const [status, setStatus] = useState<(typeof STATUS_TABS)[number]["value"]>(initialStatus);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -152,7 +157,7 @@ export function MemberDirectoryTable({
                     <TableCell className="text-right">
                       {member.userId === currentUserId ? (
                         <span className="text-xs text-muted-foreground">Use &quot;Leave group&quot;</span>
-                      ) : member.status === "removed" ? null : (
+                      ) : (
                         <MemberActionsMenu
                           groupId={groupId}
                           memberId={member.userId}
@@ -183,7 +188,7 @@ export function MemberDirectoryTable({
                     </p>
                     <p className="truncate text-xs text-muted-foreground">{member.email}</p>
                   </div>
-                  {member.userId !== currentUserId && member.status !== "removed" ? (
+                  {member.userId !== currentUserId ? (
                     <MemberActionsMenu
                       groupId={groupId}
                       memberId={member.userId}
