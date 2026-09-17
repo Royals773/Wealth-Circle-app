@@ -404,6 +404,58 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
     expect(auditRows?.length).toBeGreaterThan(0);
   });
 
+  // PA-13 regression: profiles_select_managers_any_status
+  // (0027_fix_removed_member_profile_visibility.sql). Requires that
+  // migration to be applied — see tests/security/README.md.
+  it("lets an owner/administrator read a removed member's profile (Removed-tab identity fix)", async () => {
+    const { data, error } = await ownerClient
+      .from("profiles")
+      .select("id, full_name")
+      .eq("id", targetId)
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data?.full_name).toBe("Membership Test Target");
+  });
+
+  it("does not let a manager of an unrelated group read a removed member's profile", async () => {
+    const { data, error } = await otherOwnerClient
+      .from("profiles")
+      .select("id, full_name")
+      .eq("id", targetId)
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toBeNull();
+  });
+
+  it("does not let an ordinary member read a removed member's profile via the manager policy", async () => {
+    const { data, error } = await loanMemberClient
+      .from("profiles")
+      .select("id, full_name")
+      .eq("id", targetId)
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toBeNull();
+  });
+
+  it("prevents an ordinary member from reactivating a removed member", async () => {
+    const { error } = await loanMemberClient.rpc("reactivate_member", {
+      p_group_id: groupId,
+      p_member_id: targetId,
+      p_reason: null,
+    });
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/only owners and administrators/i);
+  });
+
+  it("does not let a manager of another group reactivate this group's member", async () => {
+    const { error } = await otherOwnerClient.rpc("reactivate_member", {
+      p_group_id: groupId,
+      p_member_id: targetId,
+      p_reason: null,
+    });
+    expect(error).not.toBeNull();
+  });
+
   it("lets a manager directly reactivate a removed member, resetting their tenure", async () => {
     const { data: beforeRow } = await ownerClient
       .from("group_memberships")
@@ -434,6 +486,55 @@ describe.skipIf(!isConfigured)("member and role management (live)", () => {
 
     const { data: seenAfterReactivation } = await targetClient.from("groups").select("id").eq("id", groupId);
     expect(seenAfterReactivation?.length).toBe(1);
+  });
+
+  it("does not modify a member's contribution history across a removal/reactivation cycle", async () => {
+    const { data: planRow } = await ownerClient
+      .from("contribution_plans")
+      .select("id")
+      .eq("group_id", groupId)
+      .eq("status", "active")
+      .single();
+
+    const { data: contribution } = await ownerClient.rpc("record_contribution", {
+      p_group_id: groupId,
+      p_member_id: targetId,
+      p_contribution_plan_id: planRow!.id,
+      p_amount_minor_units: 10000,
+      p_period_start: "2026-03-01",
+      p_period_end: "2026-03-31",
+      p_received_at: "2026-03-15",
+      p_payment_method: "cash",
+      p_payment_reference: null,
+      p_notes: null,
+    });
+    const recordId = contribution![0].record_id;
+    await ownerClient.rpc("verify_contribution", { p_record_id: recordId });
+
+    const { data: before } = await ownerClient
+      .from("contribution_records")
+      .select("*")
+      .eq("id", recordId)
+      .single();
+
+    await administratorClient.rpc("remove_member", {
+      p_group_id: groupId,
+      p_member_id: targetId,
+      p_reason: "Testing contribution preservation across removal",
+    });
+    await administratorClient.rpc("reactivate_member", {
+      p_group_id: groupId,
+      p_member_id: targetId,
+      p_reason: null,
+    });
+
+    const { data: after } = await ownerClient
+      .from("contribution_records")
+      .select("*")
+      .eq("id", recordId)
+      .single();
+
+    expect(after).toEqual(before);
   });
 
   it("lets a removed member rejoin via a fresh invitation, instead of being blocked as 'already a member'", async () => {
