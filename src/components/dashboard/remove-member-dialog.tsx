@@ -17,6 +17,14 @@ import { AlertCircle } from "lucide-react";
 import { removeMemberAction } from "@/lib/actions/membership";
 import { initialMembershipActionState } from "@/lib/actions/action-state";
 
+/** Exported so its exact wording is directly testable without needing to
+ * render the Radix Dialog portal (which produces empty output under
+ * renderToStaticMarkup). Previously read "This is reversible only by
+ * re-inviting them" — stale, since MemberActionsMenu already offers a
+ * direct Reactivate action for a removed member. */
+export const REMOVE_MEMBER_DESCRIPTION =
+  "You can reactivate them later from the members page. Their historical records are preserved.";
+
 /** Client-side blocker preview only — the RPC recomputes and enforces
  * these from scratch server-side via member_removal_blockers(). This is
  * purely so an officer doesn't fill out a whole form before finding out
@@ -68,9 +76,7 @@ export function RemoveMemberDialog({
           <form action={formAction}>
             <DialogHeader>
               <DialogTitle>Remove {memberName}?</DialogTitle>
-              <DialogDescription>
-                This is reversible only by re-inviting them. Their historical records are preserved.
-              </DialogDescription>
+              <DialogDescription>{REMOVE_MEMBER_DESCRIPTION}</DialogDescription>
             </DialogHeader>
 
             <div className="mt-4 space-y-4">
