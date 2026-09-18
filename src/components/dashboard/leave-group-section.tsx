@@ -44,7 +44,7 @@ export function LeaveGroupSection({ groupId, isLastOwner }: { groupId: string; i
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="destructive">
               <DialogTitle>Leave this group?</DialogTitle>
               <DialogDescription>
                 You&apos;ll immediately lose access. This can&apos;t be undone unless you&apos;re invited

@@ -65,7 +65,7 @@ export function RequestWithdrawalDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Request submitted</DialogTitle>
               <DialogDescription>
                 Your request is now awaiting review — you can track its status on this page.
@@ -79,7 +79,7 @@ export function RequestWithdrawalDialog({
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Request a withdrawal</DialogTitle>
               <DialogDescription>
                 You can currently withdraw up to {formatMoney(eligibility.availableToWithdraw, currencyCode)}.

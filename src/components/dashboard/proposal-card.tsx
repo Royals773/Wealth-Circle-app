@@ -167,7 +167,7 @@ export function ProposalCard({ groupId, proposal }: { groupId: string; proposal:
         <DialogContent>
           {cancelState.status === "success" ? (
             <>
-              <DialogHeader>
+              <DialogHeader variant="success">
                 <DialogTitle>Proposal cancelled</DialogTitle>
               </DialogHeader>
               <DialogFooter>
@@ -179,7 +179,7 @@ export function ProposalCard({ groupId, proposal }: { groupId: string; proposal:
           ) : (
             <form action={cancelAction}>
               <input type="hidden" name="proposalId" value={proposal.id} />
-              <DialogHeader>
+              <DialogHeader variant="destructive">
                 <DialogTitle>Cancel &ldquo;{proposal.title}&rdquo;</DialogTitle>
                 <DialogDescription>This cannot be undone. Give a reason for the record.</DialogDescription>
               </DialogHeader>

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -67,17 +68,40 @@ function AlertDialogContent({
   )
 }
 
+/**
+ * Same restrained semantic band as DialogHeader (see dialog.tsx), laid
+ * over AlertDialogHeader's existing grid-based media/title layout
+ * rather than replacing it — the grid-rows/place-items/media classes
+ * below are unchanged from before; only the band (-mx-4 -mt-4 ... p-4,
+ * rounded, bordered, tinted) is new.
+ */
+const alertDialogHeaderVariants = cva(
+  "-mx-4 -mt-4 grid grid-rows-[auto_1fr] place-items-center gap-1.5 rounded-t-xl border-b p-4 text-center has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-4 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]",
+  {
+    variants: {
+      variant: {
+        default: "border-primary/15 bg-primary/5",
+        success: "border-success/25 bg-success/10",
+        warning: "border-warning/25 bg-warning/10",
+        destructive: "border-destructive/25 bg-destructive/10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
 function AlertDialogHeader({
   className,
+  variant,
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<"div"> & VariantProps<typeof alertDialogHeaderVariants>) {
   return (
     <div
       data-slot="alert-dialog-header"
-      className={cn(
-        "grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-4 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]",
-        className
-      )}
+      data-variant={variant ?? "default"}
+      className={cn(alertDialogHeaderVariants({ variant }), className)}
       {...props}
     />
   )
@@ -123,7 +147,7 @@ function AlertDialogTitle({
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
       className={cn(
-        "font-heading text-base font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2",
+        "font-heading text-base font-bold sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2",
         className
       )}
       {...props}
@@ -191,6 +215,7 @@ export {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  alertDialogHeaderVariants,
   AlertDialogMedia,
   AlertDialogOverlay,
   AlertDialogPortal,

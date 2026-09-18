@@ -78,7 +78,7 @@ export function InviteMemberDialog({ groupId }: { groupId: string }) {
       <DialogContent>
         {state.status === "success" && state.inviteLink ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Invitation created</DialogTitle>
               <DialogDescription>
                 <InvitationResultMessage emailStatus={state.emailStatus} />
@@ -101,7 +101,7 @@ export function InviteMemberDialog({ groupId }: { groupId: string }) {
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Invite a member</DialogTitle>
               <DialogDescription>
                 They&apos;ll get a link to create an account (or sign in) and join with the role

@@ -45,7 +45,7 @@ export function ReverseWithdrawalDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Payment reversed</DialogTitle>
               <DialogDescription>
                 {requesterName}&apos;s withdrawal is now marked as reversed. The original record is kept,
@@ -61,7 +61,7 @@ export function ReverseWithdrawalDialog({
         ) : (
           <form action={formAction}>
             <input type="hidden" name="requestId" value={requestId} />
-            <DialogHeader>
+            <DialogHeader variant="destructive">
               <DialogTitle>Reverse payment to {requesterName}</DialogTitle>
               <DialogDescription>
                 Use this only if the {formatMoney(amountMinorUnits, currencyCode)} payment was recorded in

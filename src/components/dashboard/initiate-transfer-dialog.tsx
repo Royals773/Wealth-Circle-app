@@ -40,7 +40,7 @@ export function InitiateTransferDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Transfer requested</DialogTitle>
               <DialogDescription>
                 They&apos;ll need to accept before ownership actually changes. You remain the owner until
@@ -55,7 +55,7 @@ export function InitiateTransferDialog({
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Transfer ownership</DialogTitle>
               <DialogDescription>
                 You&apos;ll become an administrator once they accept. Only one transfer can be pending at a

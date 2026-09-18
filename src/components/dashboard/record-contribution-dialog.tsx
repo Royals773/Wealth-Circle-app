@@ -64,7 +64,7 @@ export function RecordContributionDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Contribution recorded</DialogTitle>
               <DialogDescription>
                 It&apos;s now pending verification — you can verify it from the ledger below.
@@ -78,7 +78,7 @@ export function RecordContributionDialog({
           </>
         ) : (
         <form action={formAction}>
-          <DialogHeader>
+          <DialogHeader variant="default">
             <DialogTitle>Record a contribution</DialogTitle>
             <DialogDescription>
               Record a payment already received into the group&apos;s bank account. This creates a

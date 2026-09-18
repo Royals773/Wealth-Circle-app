@@ -67,7 +67,7 @@ export function RecordRepaymentDialog({ groupId, loans }: { groupId: string; loa
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Repayment recorded</DialogTitle>
               <DialogDescription>It&apos;s now pending verification.</DialogDescription>
             </DialogHeader>
@@ -80,7 +80,7 @@ export function RecordRepaymentDialog({ groupId, loans }: { groupId: string; loa
         ) : (
           <form action={formAction}>
             <input type="hidden" name="loanId" value={loanId} />
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Record a repayment</DialogTitle>
               <DialogDescription>
                 Record a payment already received into the group&apos;s bank account against an active loan.

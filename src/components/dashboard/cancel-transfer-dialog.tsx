@@ -40,7 +40,7 @@ export function CancelTransferDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Transfer cancelled</DialogTitle>
               <DialogDescription>You remain the owner of this group.</DialogDescription>
             </DialogHeader>
@@ -53,7 +53,7 @@ export function CancelTransferDialog({
         ) : (
           <form action={formAction}>
             <input type="hidden" name="transferId" value={transferId} />
-            <DialogHeader>
+            <DialogHeader variant="destructive">
               <DialogTitle>Cancel the transfer to {toUserName}?</DialogTitle>
               <DialogDescription>They will no longer be able to accept it.</DialogDescription>
             </DialogHeader>

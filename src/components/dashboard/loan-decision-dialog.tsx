@@ -28,6 +28,13 @@ import { CONTRIBUTION_FREQUENCIES, CONTRIBUTION_FREQUENCY_LABELS } from "@/lib/v
 import { minorToMajorUnits, formatMoney } from "@/lib/money";
 import type { ContributionFrequency } from "@/lib/types/database";
 
+/** Exported so the approve/reject → header-variant mapping is directly
+ * testable without rendering the Radix Dialog portal (which produces
+ * empty output under renderToStaticMarkup — see remove-member-dialog.tsx). */
+export function decisionHeaderVariant(decision: "approved" | "rejected") {
+  return decision === "rejected" ? "destructive" : "warning";
+}
+
 export function LoanDecisionDialog({
   groupId,
   applicationId,
@@ -63,7 +70,7 @@ export function LoanDecisionDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Decision recorded</DialogTitle>
               <DialogDescription>{applicantName}&apos;s application has been updated.</DialogDescription>
             </DialogHeader>
@@ -77,7 +84,7 @@ export function LoanDecisionDialog({
           <form action={formAction}>
             <input type="hidden" name="applicationId" value={applicationId} />
             <input type="hidden" name="decision" value={decision} />
-            <DialogHeader>
+            <DialogHeader variant={decisionHeaderVariant(decision)}>
               <DialogTitle>Decide on {applicantName}&apos;s application</DialogTitle>
               <DialogDescription>
                 Requested {formatMoney(requestedAmountMinorUnits, currencyCode)} over {requestedTermMonths} months.

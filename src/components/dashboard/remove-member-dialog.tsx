@@ -62,7 +62,7 @@ export function RemoveMemberDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Member removed</DialogTitle>
               <DialogDescription>{memberName} has been removed from this group.</DialogDescription>
             </DialogHeader>
@@ -74,7 +74,7 @@ export function RemoveMemberDialog({
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="destructive">
               <DialogTitle>Remove {memberName}?</DialogTitle>
               <DialogDescription>{REMOVE_MEMBER_DESCRIPTION}</DialogDescription>
             </DialogHeader>

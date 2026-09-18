@@ -40,7 +40,7 @@ export function MarkDefaultedDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Loan marked as defaulted</DialogTitle>
             </DialogHeader>
             <DialogFooter>
@@ -52,7 +52,7 @@ export function MarkDefaultedDialog({
         ) : (
           <form action={formAction}>
             <input type="hidden" name="loanId" value={loanId} />
-            <DialogHeader>
+            <DialogHeader variant="destructive">
               <DialogTitle>Mark {borrowerName}&apos;s loan as defaulted</DialogTitle>
               <DialogDescription>
                 Use this when repayment is genuinely not expected to continue. This can&apos;t be undone.
