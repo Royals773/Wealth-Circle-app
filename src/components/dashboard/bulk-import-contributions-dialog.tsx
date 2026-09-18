@@ -26,6 +26,17 @@ import {
 
 const REQUIRED_HEADERS = ["member_identifier", "amount", "received_at"] as const;
 
+/** Exported so the stage/result → header-variant mapping is directly
+ * testable without rendering the Radix Dialog portal (which produces
+ * empty output under renderToStaticMarkup — see remove-member-dialog.tsx).
+ * "committed" is the deliberate result state: success once every row
+ * imported, warning the moment any row failed — upload/preview stay the
+ * calm default since nothing has actually happened yet. */
+export function bulkImportHeaderVariant(stage: "upload" | "preview" | "committed", failedCount: number) {
+  if (stage !== "committed") return "default";
+  return failedCount > 0 ? "warning" : "success";
+}
+
 function parseFile(text: string): { rows: BulkImportRow[]; error: string | null } {
   const { headers, rows } = parseCsvWithHeader(text);
   if (rows.length === 0) {
@@ -134,6 +145,7 @@ export function BulkImportContributionsDialog({ groupId }: { groupId: string }) 
   }
 
   const { succeeded, failed } = summarize(results);
+  const headerVariant = bulkImportHeaderVariant(stage, failed.length);
   const hasImplausibleDateFailures = failed.some((r) => r.errorMessage?.toLowerCase().includes("implausible date"));
   const totalAmountMajor = rows
     .filter((_, i) => results[i]?.success)
@@ -154,7 +166,7 @@ export function BulkImportContributionsDialog({ groupId }: { groupId: string }) 
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
+        <DialogHeader variant={headerVariant}>
           <DialogTitle>Bulk import historical contributions</DialogTitle>
           <DialogDescription>
             CSV with columns <code>member_identifier</code> (email or in-app member id — never a name),{" "}

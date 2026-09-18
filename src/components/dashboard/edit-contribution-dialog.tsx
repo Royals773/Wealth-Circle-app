@@ -53,7 +53,7 @@ export function EditContributionDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Contribution updated</DialogTitle>
               <DialogDescription>The corrected details have been saved.</DialogDescription>
             </DialogHeader>
@@ -66,7 +66,7 @@ export function EditContributionDialog({
         ) : (
           <form action={formAction}>
             <input type="hidden" name="recordId" value={record.id} />
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Edit contribution — {record.memberName}</DialogTitle>
               <DialogDescription>
                 Only available while this entry is pending verification. Once verified, use Reverse

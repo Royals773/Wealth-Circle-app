@@ -338,7 +338,7 @@ export default function StyleguidePage() {
                 <Button variant="outline">Open a sample dialog</Button>
               </DialogTrigger>
               <DialogContent>
-                <DialogHeader>
+                <DialogHeader variant="default">
                   <DialogTitle>Record a contribution</DialogTitle>
                   <DialogDescription>This is a real DialogContent component, styled only by the scoped tokens.</DialogDescription>
                 </DialogHeader>

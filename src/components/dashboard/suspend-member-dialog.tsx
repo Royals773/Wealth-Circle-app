@@ -40,7 +40,7 @@ export function SuspendMemberDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Member suspended</DialogTitle>
               <DialogDescription>
                 {memberName} has been suspended and can no longer access this group until reactivated.
@@ -54,7 +54,7 @@ export function SuspendMemberDialog({
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="destructive">
               <DialogTitle>Suspend {memberName}?</DialogTitle>
               <DialogDescription>
                 They will immediately lose access to this group&apos;s data and actions. Their history is

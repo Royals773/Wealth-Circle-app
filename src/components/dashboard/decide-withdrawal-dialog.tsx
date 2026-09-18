@@ -19,6 +19,13 @@ import { decideWithdrawalRequestAction } from "@/lib/actions/withdrawals";
 import { initialWithdrawalActionState } from "@/lib/actions/action-state";
 import { formatMoney } from "@/lib/money";
 
+/** Exported so the approve/reject → header-variant mapping is directly
+ * testable without rendering the Radix Dialog portal (which produces
+ * empty output under renderToStaticMarkup — see remove-member-dialog.tsx). */
+export function decisionHeaderVariant(decision: "approved" | "rejected") {
+  return decision === "rejected" ? "destructive" : "warning";
+}
+
 export function DecideWithdrawalDialog({
   groupId,
   requestId,
@@ -47,7 +54,7 @@ export function DecideWithdrawalDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Decision recorded</DialogTitle>
               <DialogDescription>{requesterName}&apos;s request has been updated.</DialogDescription>
             </DialogHeader>
@@ -61,7 +68,7 @@ export function DecideWithdrawalDialog({
           <form action={formAction}>
             <input type="hidden" name="requestId" value={requestId} />
             <input type="hidden" name="decision" value={decision} />
-            <DialogHeader>
+            <DialogHeader variant={decisionHeaderVariant(decision)}>
               <DialogTitle>Decide on {requesterName}&apos;s withdrawal request</DialogTitle>
               <DialogDescription>
                 Requested {formatMoney(amountMinorUnits, currencyCode)}. You cannot decide on your own request,

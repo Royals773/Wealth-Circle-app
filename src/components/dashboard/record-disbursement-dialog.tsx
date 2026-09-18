@@ -47,7 +47,7 @@ export function RecordDisbursementDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Disbursement recorded</DialogTitle>
               <DialogDescription>The loan is now active.</DialogDescription>
             </DialogHeader>
@@ -60,7 +60,7 @@ export function RecordDisbursementDialog({
         ) : (
           <form action={formAction}>
             <input type="hidden" name="loanId" value={loanId} />
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Record disbursement</DialogTitle>
               <DialogDescription>
                 Confirm that {formatMoney(principalMinorUnits, currencyCode)} has already been transferred to{" "}

@@ -72,7 +72,7 @@ export function RepaymentReasonDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>{copy.title}</DialogTitle>
               <DialogDescription>Done — the record has been updated.</DialogDescription>
             </DialogHeader>
@@ -85,7 +85,7 @@ export function RepaymentReasonDialog({
         ) : (
         <form action={formAction}>
           <input type="hidden" name="repaymentId" value={repaymentId} />
-          <DialogHeader>
+          <DialogHeader variant="destructive">
             <DialogTitle>{copy.title}</DialogTitle>
             <DialogDescription>{copy.description}</DialogDescription>
           </DialogHeader>

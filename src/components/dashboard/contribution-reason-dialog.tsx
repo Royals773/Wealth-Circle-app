@@ -72,7 +72,7 @@ export function ContributionReasonDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>{copy.title}</DialogTitle>
               <DialogDescription>Done — the record has been updated.</DialogDescription>
             </DialogHeader>
@@ -85,7 +85,7 @@ export function ContributionReasonDialog({
         ) : (
         <form action={formAction}>
           <input type="hidden" name="recordId" value={recordId} />
-          <DialogHeader>
+          <DialogHeader variant="destructive">
             <DialogTitle>{copy.title}</DialogTitle>
             <DialogDescription>{copy.description}</DialogDescription>
           </DialogHeader>

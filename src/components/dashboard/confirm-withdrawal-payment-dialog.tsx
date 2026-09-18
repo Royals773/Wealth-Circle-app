@@ -47,7 +47,7 @@ export function ConfirmWithdrawalPaymentDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Payment recorded</DialogTitle>
               <DialogDescription>
                 {requesterName}&apos;s withdrawal is now marked as paid externally.
@@ -62,7 +62,7 @@ export function ConfirmWithdrawalPaymentDialog({
         ) : (
           <form action={formAction}>
             <input type="hidden" name="requestId" value={requestId} />
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Confirm payment to {requesterName}</DialogTitle>
               <DialogDescription>
                 Only confirm this after {formatMoney(amountMinorUnits, currencyCode)} has actually been

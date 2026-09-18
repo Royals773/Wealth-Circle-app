@@ -54,7 +54,7 @@ export function RecordBackdatedContributionDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Historical contribution recorded</DialogTitle>
               <DialogDescription>
                 It&apos;s already verified and counted toward this member&apos;s history. They can view it —
@@ -69,7 +69,7 @@ export function RecordBackdatedContributionDialog({
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Add a historical contribution</DialogTitle>
               <DialogDescription>
                 For back-dating a member&apos;s contribution history from before this group used the app —

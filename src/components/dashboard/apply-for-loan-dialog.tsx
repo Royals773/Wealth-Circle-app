@@ -97,7 +97,7 @@ export function ApplyForLoanDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Application submitted</DialogTitle>
               <DialogDescription>
                 Your loan officer will review it — you can track its status on this page.
@@ -111,7 +111,7 @@ export function ApplyForLoanDialog({
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Apply for a loan</DialogTitle>
               <DialogDescription>
                 Your verified contribution balance is {formatMoney(verifiedContributionsTotal, currencyCode)}.

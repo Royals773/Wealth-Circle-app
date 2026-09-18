@@ -36,7 +36,7 @@ export function CreateProposalDialog({ groupId }: { groupId: string }) {
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Proposal created</DialogTitle>
               <DialogDescription>Members can vote once the voting window opens.</DialogDescription>
             </DialogHeader>
@@ -48,7 +48,7 @@ export function CreateProposalDialog({ groupId }: { groupId: string }) {
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>New governance proposal</DialogTitle>
               <DialogDescription>
                 Title, dates and thresholds are locked once voting opens — only cancellation remains possible

@@ -49,7 +49,7 @@ export function ChangeRoleDialog({
       <DialogContent>
         {state.status === "success" ? (
           <>
-            <DialogHeader>
+            <DialogHeader variant="success">
               <DialogTitle>Role changed</DialogTitle>
               <DialogDescription>{memberName}&apos;s role has been updated.</DialogDescription>
             </DialogHeader>
@@ -61,7 +61,7 @@ export function ChangeRoleDialog({
           </>
         ) : (
           <form action={formAction}>
-            <DialogHeader>
+            <DialogHeader variant="default">
               <DialogTitle>Change {memberName}&apos;s role</DialogTitle>
               <DialogDescription>
                 Currently {ROLE_LABELS[currentRole]}. Ownership can&apos;t be changed here — use

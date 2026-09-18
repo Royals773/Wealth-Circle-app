@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -85,11 +86,41 @@ function DialogContent({
   )
 }
 
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+/**
+ * Restrained, semantic header bands — a calm brand tint for ordinary
+ * forms, escalating to success/warning/destructive only when the
+ * dialog's actual purpose calls for it. Bleeds to the dialog's edges
+ * the same way DialogFooter already does (-mx-4 -mt-4 ... p-4,
+ * rounded to match DialogContent's own rounded-xl) so the two bands
+ * bookend the content consistently.
+ */
+const dialogHeaderVariants = cva(
+  "-mx-4 -mt-4 flex flex-col gap-1.5 rounded-t-xl border-b p-4",
+  {
+    variants: {
+      variant: {
+        default: "border-primary/15 bg-primary/5",
+        success: "border-success/25 bg-success/10",
+        warning: "border-warning/25 bg-warning/10",
+        destructive: "border-destructive/25 bg-destructive/10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+function DialogHeader({
+  className,
+  variant,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof dialogHeaderVariants>) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
+      data-variant={variant ?? "default"}
+      className={cn(dialogHeaderVariants({ variant }), className)}
       {...props}
     />
   )
@@ -130,7 +161,7 @@ function DialogTitle({
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "font-heading text-base leading-none font-medium",
+        "font-heading text-base leading-none font-bold",
         className
       )}
       {...props}
@@ -161,6 +192,7 @@ export {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  dialogHeaderVariants,
   DialogOverlay,
   DialogPortal,
   DialogTitle,
