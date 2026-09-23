@@ -130,7 +130,7 @@ Result** once any defect is fixed.
 
 | Test ID | Scenario | Expected Result | Tester | Date | Environment | Actual Result | Pass/Fail | Evidence | Defect Ref | Retest Result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PA-15 | Treasurer records a contribution smaller than the expected amount. | System records the partial amount accurately and reflects the shortfall/outstanding balance correctly, without silently treating it as a full contribution. | | | | | | | | |
+| PA-15 | Treasurer records a contribution smaller than the expected amount. | System records the partial amount accurately and reflects the shortfall/outstanding balance correctly, without silently treating it as a full contribution. | Courage Sewonyadzi | 2026-09-23 | WealthCircle Staging (`zxxkmvoovdlxpikkvqvs`) via local dev server | Ama recorded a GH₵40.00 cash contribution for Courage against the GH₵100.00 monthly obligation, then verified it. Courage correctly displayed as `Partial` with GH₵60.00 remaining; group totals read Expected GH₵200.00 / Received GH₵140.00 / Verified GH₵40.00 / Pending GH₵100.00 / Outstanding GH₵160.00. Independently confirmed by direct read-only database verification: record `75997a1a-9d29-4c41-bbb8-35e0e99cd816` (`status: verified`, `created_by`/`verified_by` both Ama, all rejection/reversal/reconciliation fields null); exactly one `contribution_recorded` and one `contribution_verified` audit row, both actor Ama; exactly two notification rows, recipient Courage, both `email_status: sent` (application-level Resend evidence, distinct from Supabase Auth SMTP); Ama's two prior records (`af79a2b1-...`, `741c5b9c-...`) confirmed unchanged; totals independently reconstructed from the underlying rows and matched exactly. | Pass | `docs/pilot-readiness-status-2026-09-13.md` §11 | | |
 
 ### 16. Backdated contributions
 
@@ -216,7 +216,7 @@ Result** once any defect is fixed.
 
 | Total scenarios | Passed | Failed (open) | Failed (P0/P1, blocking) | Failed (P2/P3, non-blocking) |
 |---|---|---|---|---|
-| 28 (baseline; add rows as needed) | 16 (PA-01, PA-02, PA-03, PA-04, PA-05, PA-06, PA-07, PA-08, PA-09, PA-10, PA-11, PA-12, PA-13, PA-14, PA-25, PA-26) | 0 | 0 | 0 |
+| 28 (baseline; add rows as needed) | 17 (PA-01, PA-02, PA-03, PA-04, PA-05, PA-06, PA-07, PA-08, PA-09, PA-10, PA-11, PA-12, PA-13, PA-14, PA-15, PA-25, PA-26) | 0 | 0 | 0 |
 
 The pilot must not open while the "Failed (P0/P1, blocking)" column is
 non-zero.

@@ -48,8 +48,8 @@ stronger, real end-to-end evidence — see Section 5.
 | PA-12 Role-based access | `tests/security/membership.test.ts`, `platform-authorisation.test.ts` — live run tonight, **plus a real-browser re-verification on 2026-09-16** (platform-admin denial, read-only settings, read-only member roster, zero rows changed) — see Section 5 |
 | PA-13 Member removal/reactivation | **Re-verified 2026-09-17**: real browser removal → immediate access-loss → preserved history → reactivation → restored-access cycle, including a P1 defect found and fixed mid-verification — see Section 9 |
 | PA-14 Contributions | **Re-verified 2026-09-17**: real browser contribution recorded by the treasurer, including an invalid first attempt corrected through the real reject/re-record workflow — see Section 9 |
-| PA-15 Partial contributions | Live dry run (Batch 2 — real partial payment, shortfall math confirmed correct) |
-| PA-16 Backdated contributions | `tests/security/backdated-contributions.test.ts` — live run tonight |
+| PA-15 Partial contributions | **Pass — verified 2026-09-23**: a smaller-than-full contribution (GH₵40.00 against the GH₵100.00 monthly obligation) was recorded and verified in the UI; the payer correctly stayed marked `partial`, with GH₵60.00 remaining shortfall; group-level Received/Verified/Pending/Outstanding totals updated correctly and consistently in the UI. Row-level contribution, audit and notification evidence subsequently confirmed by direct read-only database verification — see Section 11. |
+| PA-16 Backdated contributions | **Blocked/not completed**: four diagnostic `record_contribution` calls were made against Group B on 2026-09-18 — three using received dates earlier than the current period (2026-08-20, 2026-08-24, 2026-08-26) and one using the same-day date (2026-09-18, not backdated even under the informal date-based meaning) — but none exercised the acceptance criterion itself: correct attribution into a genuinely earlier, already-elapsed period. All four rows were assigned to Group B's first/current period (2026-09-16–2026-10-15) and all have `is_backdated=false` (they used the ordinary owner/administrator/treasurer-facing `record_contribution` path, not the separate owner/administrator-only `record_backdated_contribution`/`bulk_import_contributions` RPCs, which use a different meaning of "backdated" and were not exercised here). This confirms, but does not resolve, the already-identified `getPeriodContaining()` index-0 clamp: neither plan currently on staging has rolled past its first billing cycle, so no genuinely earlier period exists to backdate into yet — no sequence of correct field values could have produced a different result. Two of the four rows were rejected ("not right", "testing") and are neutralised; the other two (GH₵100 each) remain `pending_verification` and currently add GH₵200 to Group B's live Received/Pending figures relative to the PA-15 screenshot's historical snapshot — an unresolved staging-data housekeeping item requiring a separate owner decision, not addressed here. Completing PA-16 still requires an isolated disposable fixture group with an eligible prior period and working test credentials; creation remains blocked on a stale stored credential for `wealthcircle-test-5@example.com` — not yet resolved. |
 | PA-17 CSV import | Live dry run (Batch 2 — real `bulk_import_contributions` RPC, two scenarios: per-row rejection and whole-file rejection) |
 | PA-18 Withdrawals | `tests/security/withdrawals.test.ts` — live run tonight |
 | PA-19 Two-person approval | `tests/security/withdrawals.test.ts` — live run tonight |
@@ -591,3 +591,103 @@ historical records (the retained `rejected` correction and the
 access, and history, were both genuinely restored, not just implied by
 the database state. No contribution action was taken during this final
 check.
+
+## 10. Password-recovery email incident — 2026-09-18 (resolved 2026-09-22)
+
+On 2026-09-18, password-recovery requests made against `example.com`
+test accounts returned a generic Supabase Auth `500` ("Error sending
+recovery email") via Custom SMTP. Rotating the Resend API key in that
+SMTP panel did not resolve it, and the underlying cause remained
+unidentified at the time.
+
+A subsequent Auth Logs review exposed the true underlying response
+from the SMTP provider: five recovery events on 2026-09-18 all
+returned `550 "Invalid 'to' field. Please use our testing email
+address instead of domains like 'example.com'"`. This confirms
+Supabase Auth successfully reached the SMTP provider and that
+credentials were accepted far enough to reach recipient validation —
+Resend rejected the requests because they targeted invalid
+`example.com` test recipients, not because of a credential, code, or
+SMTP-provider outage. A recipient-policy rejection of this kind could
+never have been fixed by rotating the API key, which explains why that
+earlier attempt had no effect.
+
+A fresh manual recovery-email request was made on 2026-09-22 using the
+existing valid Ama staging alias. The email delivered successfully to
+Gmail, sender displayed as `WealthCircle Development
+<no-reply@wealthcircle.app>`, subject `Reset your password`. The
+recovery link was deliberately not opened and Ama's password was not
+changed — the check was limited to confirming delivery; the full
+password-change journey was not rerun on 2026-09-22.
+
+**Conclusion**: this was a test-data limitation (invalid
+`example.com` recipients), not an application-code defect, credential
+problem, or SMTP outage. PA-01 and PA-02 were not affected — nothing
+evidences a fault in the "Confirm signup" template or flow, which is
+separate from the "Reset Password" template used for recovery. PA-03
+remains supported by its earlier complete end-to-end test (Section 5)
+plus this fresh delivery confirmation. No SMTP, Resend, Supabase
+configuration or application-code fix is required. This incident is
+closed.
+
+## 11. PA-15 — partial contribution, database/audit/notification verification, 2026-09-23
+
+Live-executed against Group B (`cee71300-7824-4be9-8a87-2ea476629a49`),
+current period 2026-09-16–2026-10-15 (GH₵100.00/member monthly
+obligation). Ama recorded a GH₵40.00 cash contribution for Courage —
+smaller than the full GH₵100.00 obligation — and then verified it. The
+UI correctly displayed Courage as `Partial` with GH₵60.00 remaining,
+and group totals read Expected GH₵200.00 / Received GH₵140.00 /
+Verified GH₵40.00 / Pending GH₵100.00 / Outstanding GH₵160.00.
+
+This UI evidence was independently confirmed by direct, read-only
+database verification on 2026-09-23 (SELECT-only queries against
+WealthCircle Staging, `zxxkmvoovdlxpikkvqvs`, via the Supabase CLI's
+linked Management-API path — no service-role credential used, no write
+executed):
+
+**Contribution row** (`75997a1a-9d29-4c41-bbb8-35e0e99cd816`):
+`group_id` = Group B, `member_id` = Courage, `amount_minor_units` =
+4000 (GH₵40.00), `currency_code` = GHS, `payment_method` = `cash`,
+`period_start`/`period_end` = 2026-09-16/2026-10-15, `status` =
+`verified`, `received_at` = 2026-09-18, `created_by` = Ama,
+`verified_by` = Ama. All rejection/reversal/reconciliation fields
+(`rejected_by`, `rejected_at`, `rejection_reason`, `reversed_by`,
+`reversed_at`, `reversal_of`, `reversal_reason`) are null.
+
+**Audit evidence**: exactly one `contribution_recorded` and exactly
+one `contribution_verified` row in `audit_logs` for this contribution,
+both with Ama as actor, entity identifiers and timestamps matching the
+record exactly. No duplicate or contradictory lifecycle event exists.
+
+**Notification evidence**: exactly two `notifications` rows for this
+contribution — `contribution_recorded` and `contribution_verified` —
+both with `recipient_id` equal to Courage (the payer, per
+`record_contribution`/`verify_contribution`'s own recipient logic, not
+the verifier), each with a unique `dedupe_key` and `email_status =
+'sent'`. This is application-level Resend notification-email evidence
+only — a separate system from Supabase Auth's own SMTP (Section 10) —
+and is not evidence about, and should not be read as evidence about,
+Supabase Auth email health.
+
+**Integrity of Ama's own historical records**: both of Ama's
+pre-existing contribution rows were re-checked and confirmed unchanged
+— `af79a2b1-e451-4dbc-b77e-690bcdf2f3e0` remains
+`pending_verification`; `741c5b9c-8e85-4143-802d-11559b36cf2d` remains
+`rejected`, with its rejection metadata (`rejected_by`, `rejected_at`,
+`rejection_reason`) intact. Neither record drifted during PA-15's
+execution.
+
+**Arithmetic**: the group's Expected/Received/Verified/Pending/
+Outstanding totals, and Courage's and Ama's individual verified
+amounts, were independently reconstructed directly from the underlying
+rows rather than re-reading the UI, and matched the UI evidence
+exactly: Expected GH₵200.00, Received GH₵140.00, Verified GH₵40.00,
+Pending GH₵100.00, Outstanding GH₵160.00; Courage verified GH₵40.00
+with a GH₵60.00 shortfall; Ama verified GH₵0.00 (both of her rows
+remain unverified).
+
+This scenario is marked **Pass** — fully evidenced through UI
+behaviour, the contribution row's own state, its audit trail, its
+notification trail, and independently reconstructed totals, with zero
+unexpected fields and zero drift in unrelated records.
